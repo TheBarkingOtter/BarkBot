@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>BarkBot</title>
+		<link rel="stylesheet" href="style.css">
+		<script>
+			var boxElement = null;
+			var logElement = null;
+			
+			function Initialize()
+			{
+				boxElement = document.getElementById("box");
+				logElement = document.getElementById("log");
+				
+				Log("logging initialized");
+				
+				// recheck what the file says 4x a second
+				//setInterval(CheckStateFile, 2500);
+				CheckStateFile();
+			}
+			
+			function Log(message)
+			{
+				logElement.innerHTML += message + "<br/>";
+			}
+			
+			function ToggleBox()
+			{
+				
+				if(boxElement.style.display == "none")
+					boxElement.style.display = "block";
+				else
+					boxElement.style.display = "none";
+			}
+			
+			
+			function SetDisplay(elementId, displayValue)
+			{
+				var element = document.getElementById(elementId);
+				element.style.display = displayValue;
+			}
+			
+			function CheckStateFile()
+			{
+				var request = new XMLHttpRequest();
+				try
+				{
+					request.open("GET", "contentState.txt");
+					request.onerror = function()
+					{
+						Log("an error occurred");
+					}
+					request.onload = function()
+					{
+						Log("response:" + request.response);
+						Log("responseText:" + request.responseText);
+						Log("responseType:" + request.responseType);
+						Log("status:" + request.status);
+						Log("statusText:" + request.statusText);
+					}
+					
+					request.send();
+				}
+				catch(error)
+				{
+					alert(error);
+				}
+			
+			}
+			
+			
+			
+		</script>
+	</head>
+
+	<body onload=Initialize()>
+		<div class="Box" id="box" style="display:block">
+			Hi, I'm BarkBot!
+		</div>
+		<button onclick=ToggleBox()>
+			Toggle Box
+		</button>
+		<div id="log">
+		</div>
+	</body>
+</html>

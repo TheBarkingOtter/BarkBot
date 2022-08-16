@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Text</title>
+		<link rel="stylesheet" href="https://www.thebarkingotter.com/style.css">
+		<script src="http://www.thebarkingotter.com/gameworks/lib/HtmlUtility.js"></script>
+		<script>
+            var contentDiv = null;
+            var id = null;
+            var tick = 0;
+            var map = null;
+            var timeline = null;
+            var timelineLength = 0;
+            var currentKey = null;
+            var lastChange = new Date(0);
+            
+
+            function Initialize()
+            {
+                contentDiv = document.getElementById("content");
+                ParseUrl();
+                id = get.id;
+                setInterval(Tick, 1000);
+            }
+
+            function Tick()
+            {
+                RequestFile("overlay.json", OnLoadFile);
+                ++tick;
+                if(timeline == null)
+                {
+                    return;
+                }
+
+                for(var key in timeline)
+                {
+                    var item = timeline[key];
+                    var start = parseInt(key);
+                    if(tick == start)
+                    {
+                        currentKey = key;
+                        contentDiv.style.visibility = "visible";
+                        ParseItem(item);
+                        return;
+                    }
+
+                    var duration = parseInt(item.duration);
+                    var end = start + duration;
+                    if(tick == end)
+                    {
+                        contentDiv.style.visibility = "hidden";
+                        if(tick >= timelineLength)
+                        {
+                            tick = 0;
+                        }
+                    }
+                }
+            }
+
+            function OnLoadFile()
+            {
+                var json = JSON.parse(request.response);
+                map = json[id];
+                if(map == null || map == undefined)
+                {
+                    return;
+                }
+
+                if(lastChange < json.time)
+                {
+                    timeline = {};
+                    timelineLength = 0;
+                    for(var key in map)
+                    {
+                        var item = map[key];
+                        if(item.hasOwnProperty("start") == false)
+                            continue;
+                        var start = parseInt(item.start);
+                        var duration = parseInt(item.duration);
+                        var end = start + duration;
+                        if(end > timelineLength)
+                        {
+                            timelineLength = end;
+                        }
+                        timeline[start] = item;
+                    }
+
+                    if(currentKey != null)
+                    {
+                        var currentItem = timeline[currentKey];
+                        ParseItem(currentItem);
+                    }
+
+                    
+
+                    lastChange = json.time;
+                }
+            }
+
+            function ParseItem(item)
+            {
+                var text = item.text;
+                var nextBackTick = text.indexOf('`');
+                while(nextBackTick != -1)
+                {
+                    var variableStart = nextBackTick;
+                    var variableEnd = text.indexOf('`', nextBackTick + 1);
+                    var variableName = text.substring(variableStart + 1, variableEnd);
+                    var variableValue = item[variableName];
+                    if(variableValue == null)
+                    {
+                        console.log("Could not find timeline item " + variableName);
+                        return;
+                    }
+
+                    text = text.replace('`' + variableName + '`', variableValue);
+                    nextBackTick = text.indexOf('`');
+                }
+
+                contentDiv.innerText = text;
+                contentDiv.style.animationDuration = (item.duration + 0.1).toString() + "s";
+                contentDiv.style.animationName = "none";
+                contentDiv.offsetHeight;
+                contentDiv.style.animationName = null; 
+            }
+
+        </script>
+    </head>
+    <body onload="Initialize()">
+        <div class="FlyIn" id="content" style="visibility:visible; text-align:center; font-weight:bolder; font-size:xx-large; -webkit-text-stroke:2px black"></div>
+    </body>
+</html>

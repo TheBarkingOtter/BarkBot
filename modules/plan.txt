@@ -1,0 +1,20 @@
+
+thebarkingotter.com/twitchUtils/index.html
+- requests auth token for user
+- passes auth token to user in some form
+- TODO: download or update a file? send a callback?
+
+localhost/twitchAPI.html
+- needs to be given an auth token
+- needs to be given details about the query
+- TODO: receives bot commands
+
+modules/commands/overlay/twitchAPI.js
+- coordinates queries with php
+- receives bot commands
+
+thebarkingotter.com/twitchUtils/twitchAPI.php   // ?? can this be locally hosted as well?
+- actually performs queries
+- sends responses back to twitchAPI.js
+
+channel hash: a6dc8516e513bafae90a

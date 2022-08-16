@@ -1,0 +1,16 @@
+{
+	//Place greetings below in the form "lowercase username": "greeting message", separating entries with commas.
+	"greetings":
+	{
+		"lowercase username": "greeting message",
+		"next username": "greeting message"
+	},
+	
+	// Number of milliseconds between a user's first chat, and the bot's greeting
+	"greetingDelay": 2000,
+	
+	// Whether or not to add /me before bot messages.
+	// This causes the messages to match the bot account's color, instead of white
+	"useSlashMe": true
+}
+

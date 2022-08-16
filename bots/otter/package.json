@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "encoding": "^0.1.13",
+    "html-colors": "^0.0.6",
+    "tmi.js": "^1.8.5"
+  }
+}

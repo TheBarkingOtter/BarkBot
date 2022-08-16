@@ -1,0 +1,265 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Twitch API Overlay</title>
+		<link rel="stylesheet" href="style.css">
+		
+		<!-- Load the Twitch embed script -->
+		<script src="https://embed.twitch.tv/embed/v1.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/lib/HtmlUtility.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/lib/TwitchAPI.js"></script>
+        <script src= "https://player.twitch.tv/js/embed/v1.js"></script>
+        <script type="text/javascript">
+
+            //TODO: Write token to file with timestamp.
+            // Check for new token after some time has passed.
+
+            const CLIENT_ID = "rat7tckwdp2962ahwqlorv2qg4lzcr";
+
+            const QUERIES = {
+                viewers : {
+                    frequency : 100,
+                    //function : GetViews
+                },
+                profilePic : {
+                    frequency : 0,
+                    function : ShowProfilePic
+                },
+                GetMostPopularClip : {
+                    frequency: 0,
+                    //function : GetMostPopularClip
+                },
+                randomClip: {
+                    frequency: 0,
+                    function : ShowRandomClip
+                },
+                shoutout: {
+                    frequency: 0,
+                    function: Shoutout
+                }
+            };
+
+            let doShowClip = true;
+
+            let debug = false;
+
+            function Init()
+            {
+
+                ParseUrl();
+
+                accessToken = FindKeyValuePair(thisUrl, "token");
+                if(accessToken == null)
+                    return;
+
+                InitTwitchApi(CLIENT_ID, accessToken, QUERIES);
+
+                if(GetOrFallback("debug", false) != false)
+                {
+                    debug = true;
+
+                    let shoutoutDiv = document.getElementById("shoutout");
+                    shoutoutDiv.style.display = "block";
+
+                    channel = GetOrFallback("channel", null);
+                    if(channel != null)
+                    {
+                        Shoutout();
+                    }
+                }
+
+                setInterval(Tick, 1000);
+            }
+
+            function Tick()
+            {
+                RequestFile("overlay.json", OnLoadFile);
+            }
+
+            function OnLoadFile()
+            {
+                let json = JSON.parse(request.response);
+
+                if(lastChange < json.twitchAPI.time)
+                {
+                    channel = json.twitchAPI.channel;
+                    if(channel == null || channel == undefined || channel == "")
+                    {
+                        return;
+                    }
+
+                    queryName = json.twitchAPI.query;
+                    if(queryName == null || queryName == undefined || queryName == "")
+                    {
+                        return;
+                    }
+
+                    doShowClip = json.twitchAPI.doShowClip;
+
+                    IdentifyAndPerformQuery();
+
+                    lastChange = json.twitchAPI.time;
+                }
+            }
+
+            function ShowProfilePic()
+            {
+                PopulateProfilePic(channel, "profilePic");
+            }
+
+            async function ShowRandomClip()
+            {
+                return await PopulateRandomClip(channel, "clipWrapper");
+            }
+
+            async function Shoutout()
+            {
+                await PopulateDisplayName(channel, "user");
+
+                await ShowProfilePic();
+
+                await Pause(250);
+
+                let shoutoutDiv = document.getElementById("shoutout");
+                shoutoutDiv.style.display = "block";
+
+                let duration = 10;
+                let clip = null;
+
+                if(doShowClip)
+                {
+                    await Pause(1000);
+                    clip = await ShowRandomClip();
+                    if(clip != null)
+                        duration = clip.duration;
+                }
+
+                if(debug == true)
+                    duration = 3;
+
+                await Pause(100);
+
+                let categoryWrapper = await PopulateLastCategory(channel, "category");
+                let titleWrapper = null;
+                let emoteTags = [];
+                let emotesWrapper = null;
+
+                if(categoryWrapper != null)
+                {
+                    categoryWrapper.style.display = "flex";
+
+                    await PopulateTitle(channel, "title");
+                    titleWrapper = document.getElementById("titleWrapper");
+                    titleWrapper.style.display = "flex";
+
+                    emoteTags = await PopulateEmotes(channel, "emotes");
+                    if(emoteTags.length > 0)
+                    {
+                        emotesWrapper = document.getElementById("emoteWrapper");
+                        emotesWrapper.style.display = "flex";
+                    }
+                    
+                    let homepage = await FetchPage("https://www.twitch.tv/" + channel,
+                        {mode:"no-cors"}, "blob"    );
+                    console.log(homepage);
+
+
+                    /*new Twitch.Embed("twitch-embed", {
+                        width: "100%",
+                        height: 480,
+                        channel: channel,
+                        muted: true
+                        });
+
+                    let categoriesFrame = document.getElementById("categoriesFrame");
+                    categoriesFrame.src = "https://www.thebarkingotter.com/gameworks/lib/TwitchViewer.html?channel=" + channel; */
+                }
+                
+                if(debug == true)
+                    return;
+
+                await Pause(duration * 1000);
+                
+                shoutoutDiv.style.display = "none";
+
+                if(clip != null)
+                    clip.video.style.display = "none";
+                    
+                if(categoryWrapper != null)
+                {
+                    categoryWrapper.style.display = "none";
+                    titleWrapper.style.display = "none";
+
+                    for(let prop in emoteTags)
+                    {
+                        emoteTags[prop].remove();
+                    }
+
+                    if(emotesWrapper != null)
+                        emotesWrapper.style.display = "none";
+                }
+                
+            }
+
+        </script>
+		
+	</head>
+
+    <body onload="Init()">
+
+        <div id="shoutout" class="Blocky" style="display:none; left: 10px; width:630px; position:relative">
+            
+            <div class="Big">Otter recommends</div>
+
+            <div>Warning: clips may contain mature content</div>
+
+            <div class="SlideInRight" style="display:flex; z-index:2">
+
+                <div id="user" class="Biggest" style="color:cyan;">abcdefghijklmnopqrstuvwxy</div>
+                
+                <div class="Circle" style="width:150px; height:150px; background-color:green; border:solid green">
+                    <img id="profilePic" style="height:100%"/>
+                </div>
+                
+            </div>
+
+            <!--TODO: remove clip wrapper and shift everything up if there's no clip-->
+
+            <video id="clipWrapper"style="width:600px; display:none; border: solid green; position:absolute; right:20px; top:140px; z-index:1"></video>
+
+            <div style="position:absolute; top:460px;">
+                <div id="categoryWrapper" style="display:none; font-size:large;">
+                    <div style="align-self:center; margin:5px;">Most recently streamed: </div> 
+                    <div id="category" style="color:cyan; font-size:x-large;"></div>
+                </div>
+
+                <div id="titleWrapper" style="display:none; font-size:large;">
+                    <div style="align-self:center; margin:5px;">Most recent title: </div> 
+                    <div id="title" style="color:cyan; font-size:x-large;"></div>
+                </div>
+
+                <div id="emoteWrapper" style="display:none; font-size:large;">
+                    <div style="align-self:center; margin:5px;">Emotes: </div> 
+                    <div id="emotes" style="color:cyan; font-size:x-large;"></div>
+                </div>
+
+                <div id="twitch-embed"></div>
+
+
+                <!---<iframe id="categoriesFrame"></iframe>--->
+            </div>
+            
+
+        </div>
+
+
+        <div id="viewerCounter"></div>
+
+        <!--<img id="profilePic" />-->
+
+        <!--<video id="clipWrapper" width="1920" height="1080" style="display:none">
+        </video>-->
+
+    </body>
+</html>

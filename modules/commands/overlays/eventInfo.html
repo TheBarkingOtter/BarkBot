@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Event Info Readout</title>
+		<link rel="stylesheet" href="https://www.thebarkingotter.com/style.css">
+		<script>
+
+            var contentDiv = null;
+            var textElement = null; 
+            var dateElement = null;               
+            var prizePoolElement = null;                
+            var entriesElement = null;
+
+            var logElement = null;
+            var message = null;
+            
+            var thisUrl = null;
+            var get = {};
+
+            var lastChange = new Date(0);
+            var stateMap = null;
+
+            var showTime = 60000;
+            var hideTime = 120000;
+
+            function Initialize()
+            {
+                contentDiv = document.getElementById("content");
+
+                textElement = document.getElementById("text");
+                dateElement = document.getElementById("date");
+                prizePoolElement = document.getElementById("pool");
+                entriesElement = document.getElementById("entries");
+
+                logElement = document.getElementById("log");
+                ParseGet();
+
+                Log("logging initialized");
+
+                setInterval(CheckStateFile, 2000);
+
+                ShowText();
+            }
+
+            function ParseGet()
+			{
+                thisUrl = document.location.toString();
+
+				var indexOfGetBegin = thisUrl.indexOf('?');
+				if(indexOfGetBegin == -1)
+				{
+					return;
+				}
+				
+				var variablesString = thisUrl.substring(indexOfGetBegin + 1, thisUrl.length - 1);	// get everything after ? (string)
+				var variablePairs = variablesString.split('&');	// split apart between every & (array)
+				for(var index in variablePairs)
+				{
+					var pairAsString = variablePairs[index].split('=');
+					get[pairAsString[0]] = pairAsString[1];
+				}
+			}
+
+            function Log(message)
+			{
+				if(get["showlog"])
+				{
+					logElement.innerHTML += message + "<br/>";
+				}
+				
+			}
+
+            function CheckStateFile()
+			{
+				var request = new XMLHttpRequest();
+				var url = "overlay.json?time=" + Date.now();
+
+				request.open("GET", url);
+				request.onerror = function()
+				{
+					Log("an error occurred");
+				}
+				request.onload = function()
+				{
+                    Log("Parsing state map");
+
+                    stateMap = JSON.parse(request.response);
+
+					var updateTime = stateMap.event.time;
+					if(lastChange < updateTime)
+                    {
+                        Log("Updating overlay content")
+
+                        var text = GetPropertyOrFallback(stateMap.event, "text", null);
+                        var date = GetPropertyOrFallback(stateMap.event, "date", null);
+                        var entries = GetPropertyOrFallback(stateMap.event, "entries", null);
+                        var pool = GetPropertyOrFallback(stateMap.event, "prizePool", null);
+
+                        showTime = GetPropertyOrFallback(stateMap.event, "showTime", 60000);
+                        hideTime = GetPropertyOrFallback(stateMap.event, "hideTime", 120000);
+
+                        textElement.innerText = (text == null) ? "" : text;
+                        dateElement.innerText = (date == null) ? "" : "Date: " + date;
+                        prizePoolElement.innerText = (pool == null) ? "" : "Prize Pool: $" + pool;
+                        entriesElement.innerText = (entries == null) ? "" : "Entries: " + entries.length;
+
+                        contentDiv.style.visibility = "visible";
+
+                        lastChange = updateTime;
+                    }
+                }
+
+                request.send();
+            }
+
+            function GetPropertyOrFallback(object, property, fallback)
+            {
+                if(object.hasOwnProperty(property))
+                    return object[property];
+                else
+                    return fallback;
+            }
+
+            function ShowText()
+            {
+                if(stateMap != null)
+                    contentDiv.style.visibility = "visible";
+
+                setTimeout(HideText, showTime);
+            }
+
+            function HideText()
+            {
+                contentDiv.style.visibility = "hidden";
+                setTimeout(ShowText, hideTime);
+            }
+
+        </script>
+    </head>
+
+    <body onload="Initialize()">
+        <div id="content" style="visibility:hidden">
+            <p id="text">TEXT</p>
+            <p id="date">DATE:</p>
+            <p id="pool">POOL:</p>
+            <p id="entries">ENTRIES:</p>
+        </div>
+
+        <div id="log">
+		</div>
+
+    </body>
+</html>

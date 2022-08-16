@@ -1,0 +1,520 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Image Overlay</title>
+		<link rel="stylesheet" href="style.css">
+		<script src="http://www.thebarkingotter.com/lib/howler.core.js"></script>
+		<script src="http://www.thebarkingotter.com/gameworks/lib/HtmlUtility.js"></script>
+		<script src="http://www.thebarkingotter.com/gameworks/lib/TwitchAPI.js"></script>
+		<script>
+			let width = 1280;
+			let height = 720;
+			let stateMap = null;
+			let imageContainer = null;
+			let lastChange = Date.now();
+			let stampBomb = 0;
+			let velocity = 0;
+			let shakeCount = 0;
+
+			const IMAGE_FALLBACK_RANDOM_STAMP = "randomStamp";
+			const IMAGE_FALLBACK_LIST_FLAGS = "listFlags";
+			const IMAGE_FALLBACK_UNITY_FLAG = "unityFlag";
+
+			let FLAG_LIST = null;
+			let FLAG_MAP = null;
+
+			let wheel = null;
+			let showWheel = false;
+
+			let map = null;
+
+			async function Initialize()
+			{
+				thisUrl = document.location.toString();
+				imageContainer = document.getElementById("imageContainer");
+				ParseGet();
+
+				width = GetOrDefault("w", 1280);
+				height = GetOrDefault("h", 720);
+
+				let flagData = await FetchPage("res/flagData.json");
+				FLAG_LIST = flagData.FLAG_LIST;
+				FLAG_MAP = flagData.FLAG_MAP;
+
+				if(get.hasOwnProperty("debug"))
+				{
+					document.getElementById("debugButton1").style.display = "block";
+					document.getElementById("debugButton2").style.display = "block";
+					document.getElementById("debugButton3").style.display = "block";
+					document.getElementById("debugButton4").style.display = "block";
+				}
+
+				setInterval(CheckStateFile, 2000);
+
+				canvas = document.getElementById("main");
+				if(canvas == null)
+				{
+					console.log("canvas not found");
+					return;
+				}
+
+				if(canvas.getContext == null)
+				{
+					console.log("canvas not supported")
+					return;
+				}
+
+				context = canvas.getContext("2d");
+				if(context == null)
+				{
+					console.log("context not found");
+					return;
+				}
+
+				RunGameLoop(()=>
+				{
+					Render();
+				});
+			}
+
+			async function RunGameLoop(callback)
+			{
+				const FPS = 60;
+				const DELTA_TIME = 1.0 / FPS;
+
+				while(true)
+				{
+					callback();
+					await new Promise(resolve => setTimeout(resolve, DELTA_TIME));
+				}
+			}
+
+			function ParseGet()
+			{
+				let indexOfGetBegin = thisUrl.indexOf('?');
+				if(indexOfGetBegin == -1)
+				{
+					return;
+				}
+				
+				let variablesString = thisUrl.substring(indexOfGetBegin + 1, thisUrl.length);	// get everything after ? (string)
+				let variablePairs = variablesString.split('&');	// split apart between every & (array)
+				for(let index in variablePairs)
+				{
+					let pairAsString = variablePairs[index].split('=');
+					get[pairAsString[0]] = pairAsString[1];
+				}
+			}
+
+			function GetOrDefault(argName, defaultValue)
+			{
+				if(get.hasOwnProperty(argName))
+					return get[argName];
+				else
+					return defaultValue;
+			}
+
+			function Render()
+			{
+				context.clearRect(0, 0, canvas.width, canvas.height);
+				//DrawTextAtAngle("test", "red", "15px serif", 45, 100, 100);
+
+				if(showWheel == false)
+					return;
+
+				if(wheel != null)
+				{
+					wheel.Draw();
+					let wheelTransform = wheel.GetRect();
+
+					DrawMesh([
+						{x:wheelTransform.w - 10, y:wheel.y},
+						{x:wheelTransform.w + 10, y:wheel.y - 10},
+						{x:wheelTransform.w + 10, y:wheel.y + 10}
+					], "black");
+				}
+			}
+
+			async function ConfigWheel(populateFrom)
+			{
+				while(stateMap == null)
+				{
+					await new Promise(resolve => setTimeout(resolve, 1000/FPS));
+				}
+
+				let labels = null;
+				switch(populateFrom)
+				{
+					case "entries":
+						labels = stateMap.event.entries;
+					break;
+					
+					default:
+						labels = stateMap.overlay.wheel[populateFrom];
+				}
+
+				labels = Scramble(labels);
+				wheel = new Wheel(canvas.width / 2, canvas.height / 2, canvas.height / 2,
+					labels.length, labels, null);
+			}
+
+			async function SpinWheel(spinType = null)
+			{
+				const FPS = 60;
+				let friction;
+				switch(spinType)
+				{
+					case "big":
+						velocity = 2000 + Math.random() * 1000;
+						friction = 0.006 + Math.random() * 0.001;
+					break;
+
+					default:
+						velocity = 500 + Math.random() * 500;
+						friction = 0.005 + Math.random() * 0.001;
+				}
+
+				let segmentSize = 360 / wheel.segmentCount;
+
+				while(Math.abs(velocity) > 1
+					|| Math.abs(wheel.rotation % segmentSize) < 2)
+				{
+					await new Promise(resolve => setTimeout(resolve, 1000/FPS));
+					wheel.Rotate(velocity / 1/FPS);
+					velocity *= (1.0 - friction);
+				}
+			}
+
+			function Scramble(array)
+			{
+				let newArray = [];
+				while(array.length > 0)
+				{
+					let random = Math.floor(Math.random() * array.length);
+					let element = array[random];
+					array.splice(random, 1);
+					newArray.push(element);
+				}
+				return newArray;
+			}
+
+			function CheckStateFile()
+			{
+				let request = new XMLHttpRequest();
+				let url = "overlay.json?time=" + Date.now();
+				//Log("Preparing to send request to url " + url);
+				request.open("GET", url);
+				request.onerror = function()
+				{
+					console.log("an error occurred");
+				}
+				request.onload = function()
+				{
+					stateMap = JSON.parse(request.response);
+
+					// specified stamps
+					let imageTime = stateMap.overlay.time;
+					if(lastChange < imageTime)
+					{
+						lastChange = imageTime;
+						let imageCount = stateMap.overlay.imageCount;
+						let images = [];
+						for(let i = 0; i < imageCount; ++i)
+						{
+							images.push(stateMap.overlay["image" + i]);
+						}
+
+						ImageQueue(images, stateMap.overlay.imageDuration, stateMap.overlay.sound, stateMap.overlay.fallback);
+					}
+					
+					// bombs
+					let bombTime = stateMap.overlay.bombTime;
+					let type = stateMap.overlay.bombType;
+					if(lastChange < bombTime)
+					{
+						lastChange = bombTime;
+						if(type == "flags")
+							FlagBomb();
+						else
+							StampBomb(type);
+						
+					}
+
+					// wheel
+					let wheelTime = stateMap.overlay.wheel.time;
+					if(lastChange < wheelTime)
+					{
+						lastChange = wheelTime;
+						switch(stateMap.overlay.wheel.command)
+						{
+							case "config":
+								let populateFrom = stateMap.overlay.wheel.arg1;
+								ConfigWheel(populateFrom);
+							break;
+
+							case "show":
+								showWheel = true;
+								break;
+
+							case "hide":
+								showWheel = false;
+								break;
+
+							case "spin":
+								showWheel = true;
+								let style = stateMap.overlay.wheel.arg1;
+								SpinWheel(style);
+
+						}
+					}
+
+					let shakeTime = stateMap.overlay.wheel.shakeTime;
+					if(lastChange < shakeTime)
+					{
+						++shakeCount;
+						if((shakeCount % 2) == 0 && Math.abs(velocity) > 10)
+						{
+							velocity *= -1;
+						}
+
+						lastChange = shakeTime;
+					}
+
+					// emote wall
+					let emoteWallTime = stateMap.emoteWall.time;
+					if(lastChange < emoteWallTime)
+					{
+						let message = stateMap.emoteWall.message;
+						lastChange = emoteWallTime;
+						CheckForEmotes(message);
+					}
+
+					let soundTime = stateMap.sound.time;
+					if(lastChange < soundTime)
+					{
+						let name = stateMap.sound.name;
+						lastChange = soundTime;
+						PlayRandomizedSound("sound/" + name, ".m4a", 2);
+					}
+				}
+				
+				request.send();
+			}
+
+			async function CheckForEmotes(message)
+			{
+				let emotes = await GetEmotesAsync("thebarkingotter");
+				let imgElements = [];
+				
+				for(let prop in emotes)
+				{
+					let randomX = random() * document.width;
+					let randomY = random() * document.height;
+
+					let newImg = document.createElement("img");
+					div.appendChild(newImg);
+					newImg.src = emotes[prop];
+
+					imgElements.push(newImg);
+				}
+
+				await Pause(5000);
+
+				for(let prop in imgElements)
+				{
+					imgElements[prop].remove();
+				}
+				
+			}
+
+			function FileExists(urlToFile)
+			{
+				let xhr = new XMLHttpRequest();
+				xhr.open('HEAD', urlToFile, false);
+				xhr.send();
+				
+				if (xhr.status == "404")
+					return false;
+				else
+					return true;
+			}
+
+			function SpawnImage(name, duration, sound, volumeMultiplier = 0.1, fallback = null)
+			{
+				let imageUrl = "res/" + name;
+				if(!FileExists(imageUrl))
+				{
+					switch(fallback)
+					{
+						case IMAGE_FALLBACK_RANDOM_STAMP:
+							RandomStamp();
+							return;
+						case IMAGE_FALLBACK_LIST_FLAGS:
+							let request = new XMLHttpRequest();
+							request.open("GET", "updateContent.php?function=FlagNames");
+							request.send();
+							return;
+						case IMAGE_FALLBACK_UNITY_FLAG:
+							imageUrl = "res/flag_unity.gif";
+							break;
+					}
+				}
+
+				let img = document.createElement("img");
+				img.src = imageUrl;
+				img.style.display = "none";
+				img.style.position = "absolute";
+				img.onload = function()
+				{
+					let x = Math.random() * (width - img.width);
+					let y = Math.random() * (height - img.height);
+					img.style.left = x.toString() + "px";
+					img.style.top = y.toString() + "px";
+					img.style.display = "block";
+				}
+				
+				let imageDuration = duration;
+				
+				document.body.appendChild(img);
+				setTimeout(function()
+				{
+					document.body.removeChild(img);
+				}, imageDuration);
+
+				if(sound != null)
+				{
+					PlaySound(sound, volumeMultiplier);
+				}
+				
+			}
+
+			function PlaySound(path, volume = 1)
+			{
+				let soundUrl = "res/" + path;
+
+				let howl = new Howl({
+					src: [soundUrl],
+					volume: volume
+				});
+				howl.play();
+			}
+
+			function PlayRandomizedSound(path, extension, volume = 1)
+			{
+				let random = Math.floor(Math.random() * 2);
+				PlaySound(path + random + extension, volume);
+			}
+
+			function Stamp(name, volume)
+			{
+				SpawnImage("stamp_" + name + ".png", 5000, "stamp.ogg", volume);
+			}
+
+			function RandomStamp(type, volume)
+			{
+				let stamps;
+				switch(type)
+				{
+					case 'boo':
+						stamps = ["dotdotdot", "healpls", "helllp", "holdon", "igotthis", "imgood", "mistopportunity",
+						"noworries", "ok", "sorrysosorry", "sosorry", "supportpls", "tryagain", "uhoh", "unending"];
+						break;
+					break;
+
+					case 'yay':
+						stamps = ["excellent", "fungah", "incredible", "ivebeenwaiting", "letsroll",
+							"nice", "thanks", "thouartstrong", "together", "unending", "wellplayed"];
+					break;
+
+					case 'confus':
+						stamps = ["confus"];
+						break;
+				}
+				 
+				let rand = Math.floor(Math.random() * stamps.length);
+				Stamp(stamps[rand], volume);
+			}
+
+			function RandomFlag(volume)
+			{
+				let flags = FLAG_LIST;
+				let rand = Math.floor(Math.random() * flags.length);
+				SpawnImage("flag_" + flags[rand] + ".gif", 5000, "stamp.ogg", volume);
+			}
+
+			function CheckMap(str)
+			{
+				if(str == null)
+					return str;
+
+				let indexOfUnderscore = str.indexOf('_');
+				let indexOfPeriod = str.indexOf('.');
+				let substring = str.substring(indexOfUnderscore + 1, indexOfPeriod).toLowerCase();
+				if(FLAG_MAP.hasOwnProperty(substring))
+				{
+					return "flag_" + FLAG_MAP[substring] + ".gif";
+				}
+				return str;
+			}
+
+			function ImageQueue(images, duration, sound, fallback = null)
+			{
+				let i = 0;
+				let doImage = function()
+				{
+					let img = CheckMap(images[i]);
+					SpawnImage(img, duration, sound, 0.1, fallback);
+					++i;
+					if(i < images.length)
+						setTimeout(doImage, 100);
+				};
+				setTimeout(doImage, 100);
+			}
+
+			function StampBomb(type)
+			{
+				switch(type)
+				{
+					case 'boo':
+						stampBomb = 5;
+						break;
+					default:
+						stampBomb = 10;
+						break;
+				}
+
+				let doStamp = function()
+				{
+					RandomStamp(type, 0.1);
+					--stampBomb;
+					if(stampBomb > 0)
+						setTimeout(doStamp, 100);
+				};
+				setTimeout(doStamp, 100);
+			}
+
+			function FlagBomb()
+			{
+				stampBomb = 10;
+				let doFlag = function()
+				{
+					RandomFlag(0.1);
+					--stampBomb;
+					if(stampBomb > 0)
+						setTimeout(doFlag, 100);
+				};
+				setTimeout(doFlag, 100);
+			}
+
+		</script>
+	</head>
+
+	<body onload="Initialize()">
+		<canvas id="main" width=800 height=600></canvas>
+		<button id="debugButton1" onclick="ConfigWheel('fun'); showWheel = true;" style="display:none">Create Test Wheel</button>
+		<button id="debugButton2" onclick="SpinWheel()" style="display:none">Spin</button>
+		<button id="debugButton3" onclick="SpinWheel('big')" style="display:none">Spin Big</button>
+		<button id="debugButton4" onclick="SpinWheel('slow')" style="display:none">Spin Slow</button>
+	</body>
+</html>

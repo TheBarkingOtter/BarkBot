@@ -1,0 +1,406 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Viewers: </title>
+		<link rel="stylesheet" href="style.css">
+		
+		<!-- Load the Twitch embed script -->
+		<script src="https://embed.twitch.tv/embed/v1.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/lib/HtmlUtility.js"></script>
+        <script src= "https://player.twitch.tv/js/embed/v1.js"></script>
+        <script type="text/javascript">
+        
+        const CLIENT_ID = "rat7tckwdp2962ahwqlorv2qg4lzcr";
+        const REDIRECT = "https://thebarkingotter.com/twitchUtils/index.html";
+
+        const QUERIES = {
+            viewers : {
+                name : "viewers",
+                frequency : 100,
+                function : GetViews
+            },
+            profilePic : {
+                name : "profilePic",
+                frequency : 0,
+                function : GetProfilePic
+            },
+            lastClip : {
+                name : "mostPopularClip",
+                frequency: 0,
+                function : GetMostPopularClip
+            }
+        };
+
+        let query = null;
+
+        let channel = "thebarkingotter";
+        let accessToken = "";
+
+        let counter = 0;
+        let impendingUserId = -1;
+        let impendingVideoData = null;
+
+        const TOO_MANY_REQUESTS_COOLDOWN = 10 * 1000;
+
+        function Init()
+        {
+            let authorizationLink = document.getElementById("authorizationLink");
+
+            let locationHash = document.location.hash;
+            if(locationHash != null && locationHash != "")
+            {
+                //https://thebarkingotter.com/twitch-viewer-count/#access_token=k68k2ajke7ctmb4qs35b82uyikpu57&scope=&token_type=bearer&channel=
+
+                authorizationLink.remove();
+
+                channel = FindKeyValuePair(locationHash, "channel");
+                let queryString = FindKeyValuePair(locationHash, "query");
+                if(queryString == null)
+                    return;
+
+                let accessTokenStart = locationHash.indexOf("=") + 1;
+                let accessTokenEnd = locationHash.indexOf("&");
+                accessToken = locationHash.substring(accessTokenStart, accessTokenEnd);
+
+                for(let property in QUERIES)
+                {
+                    let value = QUERIES[property];
+                    if(queryString == value.name)
+                    {
+                        query = value;
+                        break;
+                    }
+                }
+                
+                if(query != null)
+                    query.function();
+            }
+            else
+            {
+                authorizationLink.setAttribute("href", GetAuthorizationUrl());
+            }
+        }
+
+        function GetAuthorizationUrl()
+        {
+            return "https://id.twitch.tv/oauth2/authorize?client_id=" + CLIENT_ID
+                + "&redirect_uri=" + encodeURIComponent(REDIRECT)
+                + "&response_type=token";
+        }
+
+        function PerformQuery(query, onload, onerror)
+        {
+            let url = "twitchAPI.php"
+            + "?accessToken=" + accessToken
+            + "&channel=" + channel
+            + "&clientId=" + CLIENT_ID
+            + "&query=" + query;
+
+            RequestFile(url, onload, onerror);
+        }
+        
+        function GetProfilePic()
+        {
+            let onerror = DefaultOnError;
+
+            let onload = function()
+            {
+                let json = JSON.parse(this.response);
+                DefaultOnTooManyRequests(json, query);
+                if(HasNoData(json))
+                {
+                    return;
+                }
+
+                // actual profile pic stuff
+                let url = json.data[0].profile_image_url;
+                let pic = document.getElementById("profilePic");
+                pic.src = url;
+            }
+
+            PerformQuery("users", onload, onerror);
+        }
+
+        function GetViews()
+        {
+            let onError = DefaultOnError;
+
+            let onLoad = function()
+            {
+                let json = JSON.parse(this.response);
+                if(HasError(json))
+                {
+                    console.log(json.error);
+                    if(HasTooManyRequestsError(json))
+                    {
+                        query.frequency *= 2;
+                        setTimeout(query.function, query.frequency);
+                        return;
+                    }
+                }
+                if(HasNoData(json))
+                {
+                    return;
+                }
+
+                // actual viewer count stuff
+                let counter = document.getElementById("viewerCounter");
+                counter.innerHTML = json.data[0].viewer_count;
+
+                document.title = "Viewers:" + json.data[0].viewer_count;
+
+                if(query.frequency > 100)
+                {
+                    query.frequency /= 2;
+                }
+
+                setTimeout(query.function, query.frequency);
+            }
+
+            PerformQuery("streams", onLoad, onError);
+        }
+
+        function GetMostPopularClip()
+        {
+            GetId(channel); // this will send a query to overwrite impendingUserId
+
+            //wait
+
+            counter = 0;
+            setTimeout(PollUserId, 100);            
+        }
+
+        function PollUserId()
+        {
+            if(impendingUserId == -1)
+            {
+                ++counter;
+                if(counter >= 100)
+                {
+                    console.log("Tried to get a user id, waited 10 seconds, got no response, giving up on getting a clip");
+                    return;
+                }
+
+                setTimeout(PollUserId, 100);
+                return;
+            }
+            
+            let onerror = DefaultOnError;
+
+            let onload = function()
+            {
+                let json = JSON.parse(this.response);
+                DefaultOnTooManyRequests(json, query);
+                if(HasNoData(json))
+                {
+                    return;
+                }
+
+                // actual clip stuff
+
+                // attempt 3 - from investigating Twitch Guru
+
+                // get the download URL for the clip, which is distinct from both the slug and the id number
+                //let videoId = json.data[0].video_id;
+                //GetVideoInfo(videoId);
+                //counter = 0;
+                //setTimeout(PollVideoData, 100);
+                let thumbnailUrl = json.data[0].thumbnail_url;
+                let guidStart = thumbnailUrl.indexOf(".tv/") + 4;
+                let guidEnd = thumbnailUrl.indexOf("-preview");
+                let guid = thumbnailUrl.substring(guidStart, guidEnd);
+
+                // set the url as the source of a video element
+                let video = document.getElementById("clipWrapper");
+                video.style.display = "block";
+
+                var source = document.createElement('source');
+                source.setAttribute('src', 'https://clips-media-assets2.twitch.tv/' + guid + '.mp4');
+                source.setAttribute('type', 'video/mp4');
+
+                video.appendChild(source);
+                video.play();
+                console.log({
+                    src: source.getAttribute('src'),
+                    type: source.getAttribute('type'),
+                });
+
+
+
+                // attempt 2
+                /*let videoId = json.data[0].video_id;
+                var options = {
+                    width: 400,
+                    height: 300,
+                    channel: channel, 
+                    video: videoId,
+                    parent: ["thebarkingotter.com"]  
+                };
+
+                console.log(JSON.stringify(options));
+                var player = new Twitch.Embed("clip", options); */
+                //player.setVolume(0.5);
+
+                /*player.addEventListener(Twitch.Embed.VIDEO_READY, function(){                {
+                    var player = embed.getPlayer();
+                    player.play();
+                });*/
+
+
+                // attempt 1 - shows ugly UI controls
+                /*let embed_url = json.data[0].embed_url + "&parent=thebarkingotter.com&autoplay=true&!controls";
+                let iframe = document.getElementById("clip");
+                iframe.src = embed_url;
+                iframe.style.display = "block";*/
+            }
+
+            //HACK STILL A HACK
+            let channelName = channel;
+            channel = impendingUserId;  
+            PerformQuery("clips", onload, onerror);
+            channel = channelName;
+        }
+
+        function PollVideoData()
+        {
+            if(impendingVideoData == null)
+            {
+                ++counter;
+                if(counter >= 100)
+                {
+                    console.log("Tried to get a user id, waited 10 seconds, got no response, giving up on getting a clip");
+                    return;
+                }
+
+                setTimeout(PollVideoData, 100);
+                return;
+            }
+
+            // set the url as the source of a video element
+            let video = document.getElementById("clipWrapper");
+            video.style.display = "block";
+
+            var source = document.createElement('source');
+            source.setAttribute('src', 'https://clips-media-assets2.twitch.tv/AT-cm%7CjybfTpgeHhiARLjpxBnUYg.mp4');
+            source.setAttribute('type', 'video/mp4');
+
+            video.appendChild(source);
+            video.play();
+            console.log({
+                src: source.getAttribute('src'),
+                type: source.getAttribute('type'),
+            });
+        }
+
+        ////// Query utility functions //////////
+
+        // TODO: Finish this with promises
+        function GetId(username)
+        {
+            let onerror = DefaultOnError;
+
+            let onload = function()
+            {
+                let json = JSON.parse(this.response);
+                DefaultOnTooManyRequests(json, query);
+                if(HasNoData(json))
+                {
+                    return;
+                }
+
+                // actual user stuff
+                impendingUserId = json.data[0].id;
+            }
+
+            PerformQuery("users", onload, onerror);
+        }
+
+        function GetVideoInfo(videoId)
+        {
+            let onerror = DefaultOnError;
+
+            let onload = function()
+            {
+                let json = JSON.parse(this.response);
+                DefaultOnTooManyRequests(json, query);
+                if(HasNoData(json))
+                {
+                    return;
+                }
+
+                // actual video stuff
+                impendingVideoData = json;
+            }
+
+            let channelName = channel;
+            channel = videoId;
+            PerformQuery("videos", onload, onerror);
+            channel = channelName;
+        }
+
+        function DefaultOnError()
+        {
+            console.log("an error occurred");
+        }
+
+        function DefaultOnTooManyRequests(json, query)
+        {
+            if(HasError(json))
+            {
+                console.log(json.error);
+                if(HasTooManyRequestsError(json))
+                {
+                    setTimeout(query.function, TOO_MANY_REQUESTS_COOLDOWN);
+                    return;
+                }
+            }
+        }
+
+        function HasError(json)
+        {
+            return json.hasOwnProperty("error");
+        }
+
+        function HasTooManyRequestsError(json)
+        {
+            return (HasError(json) && json.status == 429);
+        }
+
+        function HasNoData(json)
+        {
+            return (json == null || json.data == null
+                    || json.data.length == 0);
+        }
+        
+        </script>
+		
+	</head>
+
+    <body onload="Init()">
+
+        <a id="authorizationLink">Click to authorize</a>
+        <div id="viewerCounter"></div>
+
+        <!--<button id="getpfp" onclick="GetProfilePic()">Get Profile Pic</button>-->
+
+        <img id="profilePic" />
+
+        <!--<iframe id="clip"
+            src="https://player.twitch.tv/?<channel, video, or collection>&parent=streamernews.example.com"
+            height="300px"
+            width="400px"
+            frameborder="1"
+            scrolling="no"
+            allowfullscreen="true"
+            style="display:none"
+        >
+        </iframe>-->
+
+        <!--<div id="clip"></div>-->
+
+        <video id="clipWrapper" width="400" height="300" style="display:none">
+        </video>
+
+    </body>
+</html>

@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>BarkBot</title>
+		<link rel="stylesheet" href="style.css">
+		<script>
+			var containerElement = null;
+			var boxElement = null;
+			var logElement = null;
+			var textElement = null;
+			var thisUrl = null;
+			var get = {};
+			var stateMap = {};
+			var secondsToDisplayChange = 10;
+			var lastChange = Date.now();
+			var hasShownFile = false;
+
+			//TODO: Timing sucks.
+			
+			function Initialize()
+			{
+				containerElement = document.getElementById("container");
+				boxElement = document.getElementById("box");
+				logElement = document.getElementById("log");
+				textElement = document.getElementById("text");
+				thisUrl = document.location.toString();
+				ParseGet();
+
+				containerElement.style.height = GetOrDefault("h", 650).toString() + "px";
+				
+				Log("logging initialized");
+				
+				// recheck what the file says 4x a second
+				setInterval(CheckStateFile, 2000);
+				//CheckStateFile();
+			}
+			
+			function ParseGet()
+			{
+				var indexOfGetBegin = thisUrl.indexOf('?');
+				if(indexOfGetBegin == -1)
+				{
+					return;
+				}
+				
+				var variablesString = thisUrl.substring(indexOfGetBegin + 1, thisUrl.length - 1);	// get everything after ? (string)
+				var variablePairs = variablesString.split('&');	// split apart between every & (array)
+				for(var index in variablePairs)
+				{
+					var pairAsString = variablePairs[index].split('=');
+					get[pairAsString[0]] = pairAsString[1];
+				}
+			}
+
+			function GetOrDefault(argName, defaultValue)
+			{
+				if(get.hasOwnProperty(argName))
+					return get[argName];
+				else
+					return defaultValue;
+			}
+			
+			function Log(message)
+			{
+				if(get["showlog"])
+				{
+					logElement.innerHTML += message + "<br/>";
+				}
+				
+			}
+			
+			function ToggleBox()
+			{
+				if(boxElement.style.display == "none")
+					boxElement.style.display = "block";
+				else
+					boxElement.style.display = "none";
+			}
+			
+			function sleep(ms)
+			{
+			  return new Promise(resolve => setTimeout(resolve, ms));
+			}
+
+			function CheckStateFileLocal()
+			{
+				fetch("overlay.json")
+					.then(response => response.json())
+  					.then(data => {
+
+					  });
+			}
+
+			// DEPRECATED: Use CheckStateFileLocal
+			function CheckStateFile()
+			{
+				var request = new XMLHttpRequest();
+				try
+				{
+					var url = "overlay.json?time=" + Date.now();
+					//Log("Preparing to send request to url " + url);
+					request.open("GET", url);
+					request.onerror = function()
+					{
+						Log("an error occurred");
+					}
+					request.onload = function()
+					{
+						stateMap = JSON.parse(request.response);
+						var textToDisplay = "";
+
+						var mainTextTime = stateMap.bot.time;
+						var textFileTime = stateMap.bot.textFileTime;
+						if(textFileTime > mainTextTime && textFileTime > lastChange && hasShownFile == false)
+						{
+							var fileUrl = "res/" + stateMap.bot.textFileName;
+							var fileRequest = new XMLHttpRequest();
+							fileRequest.open("GET", fileUrl);
+							fileRequest.onload = function()
+							{
+								UpdateText(fileRequest.response);
+								hasShownFile = true;
+								boxElement.style.display = "table";
+								secondsToDisplayChange = 10;
+
+								lastChange = Date.now();
+								Log("Updating lastChange after reading file");
+							}
+							fileRequest.send();
+						}
+						else if(mainTextTime > lastChange)
+						{
+							UpdateText(stateMap.bot.text);
+							boxElement.style.display = "table";
+							secondsToDisplayChange = 10;
+							lastChange = Date.now();
+							Log("Updating lastChange after showing text");
+						}
+					}
+					
+					request.send();
+				}
+				catch(error)
+				{
+					alert(error);
+				}
+
+				secondsToDisplayChange -= 2;
+				if(secondsToDisplayChange <= 0)
+				{
+					switch(boxElement.style.display)
+					{
+						case "table":
+							boxElement.style.display = "none";
+							secondsToDisplayChange = 110;
+							break;
+						case "none":
+							boxElement.style.display = "table";
+							UpdateText(stateMap.bot.text);
+							secondsToDisplayChange = 10;
+					}
+
+					hasShownFile = false;
+				}
+			}
+			
+			
+			//// Parsing state variable functions ////
+			
+			
+			function UpdateDisplay(displayValue)
+			{
+				//boxElement.style.display = displayValue;
+			}
+			
+			function UpdateText(text)
+			{
+				textElement.innerHTML = text;
+			}
+			
+			
+			
+		</script>
+	</head>
+
+	<body onload="Initialize()">
+		<div id="container">
+			<div class="Box" id="box" style="display:table">
+				<div id="text" class="Text">
+					Initializing...
+				</div>
+			</div>
+		</div>
+		<div id="log">
+		</div>
+	</body>
+</html>
