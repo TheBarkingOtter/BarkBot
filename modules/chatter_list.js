@@ -1,11 +1,13 @@
 const filesystem = require("fs");
 const jsonUtility = require("./json_utility");
+const logConsole = require("./log_console.js");
 const logFile = require("./log_file.js");
 const twitchBot = require("./twitch_bot.js");
 const overlay = require("./commands/overlays/overlay.js")
 
 // format: channelString : pathString
 var logPathMap = { };
+let firstTimeChatCallbacks = new Set();
 
 ///////////////////////////////////////////////////////////
 // Encapsulates the start and end of a chatter's activity.
@@ -278,7 +280,38 @@ function UpdateNonlurkers(channel, activeUsername)
 		user.isLurking = false;
 		nonlurkers.push(activeUsername);
 		overlay.UpdateChatterList(nonlurkers);
+		logConsole.LogInRandomColor(activeUsername + " is chatting for the first time!");
+		//overlay.PlaySound("enter");
 	}
 }
 
-module.exports = { Initialize };
+///////////////////////////////////////////////////////////
+// Registers to receive a callback when someone chats for
+// the first time. Callback must be (username)=>void
+///////////////////////////////////////////////////////////
+function RegisterFirstTimeChatCallback(callback)
+{
+	firstTimeChatCallbacks.add(callback);
+}
+
+///////////////////////////////////////////////////////////
+// Unregisters a previously registered first chat callback.
+///////////////////////////////////////////////////////////
+function UnRegisterFirstTimeChatCallback(callback)
+{
+	firstTimeChatCallbacks.delete(callback);
+}
+
+///////////////////////////////////////////////////////////
+// Notifies all listeners of a user's first chat today.
+///////////////////////////////////////////////////////////
+function NotifyFirstChat(username)
+{
+	for(let callback of firstTimeChatCallbacks.values())
+	{
+		callback(username);
+	}
+}
+
+module.exports = { Initialize, RegisterFirstTimeChatCallback,
+	UnRegisterFirstTimeChatCallback };

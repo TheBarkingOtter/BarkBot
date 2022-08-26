@@ -7,7 +7,7 @@ let modules =
 //HACK: couldn't figure out how to dynamically determine the path of this js file
 const BOT_PATH = 'e:\\Projects\\BarkBot\\bots\\otter\\';
 
-var configMap = modules.twitchBot.ParseConfig(BOT_PATH + 'config.txt');
+var configMap = modules.twitchBot.ParseConfig('config.txt');
 let configModules = configMap.modules;
 
 
@@ -47,7 +47,7 @@ const goals = require("../../modules/commands/overlays/goals.js")
 const credits = require('./../../modules/commands/overlays/credits.js');
 const counters = require('./../../modules/commands/overlays/counters.js');
 const twitchApi = require("./../../modules/commands/overlays/twitchAPI.js");
-const emoteWall = require("./../../modules/commands/overlays/emoteWall.js");
+//const emoteWall = require("./../../modules/commands/overlays/emoteWall.js");
 
 const points = require('./../../modules/commands/points.js')
 const viewers = require("./../../modules/commands/viewers.js");
@@ -91,13 +91,13 @@ function main()
 			['thebarkingotter']
 		);
 		
-		chatterList.Initialize(modules.twitchBot, "E:/Twitch/Userlists");
-		logFile.Initialize(modules.twitchBot, "E:/Twitch/Logs");
-		overlay.Initialize("E:/Twitch/overlay.json");
+		chatterList.Initialize(modules.twitchBot, "C:/Twitch/Userlists");
+		logFile.Initialize(modules.twitchBot, "C:/Twitch/Logs");
+		overlay.Initialize("C:/Twitch/overlay.json");
 		goals.Initialize(modules.twitchBot);
-		points.Initialize(modules.twitchBot, "E:/Twitch");
-		emoteWall.Initialize(modules.twitchBot);
-		commandTracking.Initialize(modules.twitchBot, "E:/Twitch/commandRecord_");
+		points.Initialize(modules.twitchBot, "C:/Twitch");
+		//emoteWall.Initialize(modules.twitchBot);
+		commandTracking.Initialize(modules.twitchBot, "C:/Twitch/commandRecord_");
 		//viewers.InitializeViewerLogging(twitchBot);
 		
 		modules.twitchBot.ConnectAndRun();

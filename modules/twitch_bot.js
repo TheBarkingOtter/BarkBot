@@ -4,7 +4,7 @@ const barkConsole = require("./twitch_bot_console.js");
 const filesystem = require("fs");
 const jsonUtility = require("./json_utility.js");
 const logFile = require("./log_file.js");
-const tmi = require(secure.ModulePath + "tmi.js");
+const tmi = require("tmi.js");
 
 // Global variables
 var client = null;

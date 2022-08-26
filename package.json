@@ -1,8 +1,10 @@
 {
   "dependencies": {
-    "encoding": "^0.1.13",
+    "axios": "^0.27.2",
     "html-colors": "^0.0.6",
     "inquirer": "^8.0.0",
+    "inquirer-input-up": "^1.0.3",
+    "tmi": "^2.0.0",
     "tmi.js": "^1.8.5"
   }
 }

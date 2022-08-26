@@ -2,7 +2,7 @@ const secure = require("./../../secure.js");
 
 const console = require("console");
 const filesystem = require("fs");
-const htmlColors = require(secure.ModulePath + "html-colors");
+const htmlColors = require("html-colors");
 
 const jsonUtility = require("./../../json_utility.js");
 const twitchBot = require("../../twitch_bot.js");
@@ -566,14 +566,19 @@ function UpdateChatterList(nonlurkers)
     WriteData();
 }
 
-function DaddyLurk(command)
+function PlaySound(name)
 {
     ReadData();
     data.sound = {
-        name : "bahbahbow",
+        name : name,
         time : Date.now()
     };
     WriteData();
+}
+
+function DaddyLurk(command)
+{
+    PlaySound("bahbahbow");
 }
 
 // Expose public functions
@@ -603,5 +608,5 @@ module.exports =
         "!daddylurk" : DaddyLurk
 	},
 
-    Initialize, GetData, ReadData, WriteData, CreateJsonPath, UpdateChatterList
+    Initialize, GetData, ReadData, WriteData, CreateJsonPath, UpdateChatterList, PlaySound
 };

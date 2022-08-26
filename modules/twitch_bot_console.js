@@ -1,9 +1,9 @@
 const { commands } = require("./commands/thebarkingotter.js");
 const secure = require("./secure.js");
-const inquirer = require(secure.ModulePath + "inquirer");
+const inquirer = require("inquirer");
 //const twitchBot = require("./twitch_bot.js");
 
-inquirer.registerPrompt("input-up", require(secure.ModulePath + "inquirer-input-up"));
+inquirer.registerPrompt("input-up", require("inquirer-input-up"));
 
 var helpMap =
 {
