@@ -7,7 +7,7 @@ const { data } = require("cheerio/lib/api/attributes");
 
 const ACCESS_TOKEN = '?';
 const CLIENT_ID = '?';
-const TWITCH_API_URL = "https://www.thebarkingotter.com/gameworks/lib/twitchAPI.php";
+const TWITCH_API_URL = "https://www.thebarkingotter.com/gameworks/twitchAPI.php";
 
 var bot = null;
 
