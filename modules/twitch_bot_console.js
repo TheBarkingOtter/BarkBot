@@ -89,6 +89,7 @@ async function Run(_functionMap)
 
 		if(command.charAt(0) == '!')
 		{
+			console.log(command);
 			lastCommandArgs.unshift("command", botFunctions.GetClient().getOptions().channels[0], command);
 			command = GetNextArgument();
 		}

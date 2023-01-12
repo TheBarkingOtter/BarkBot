@@ -3,8 +3,8 @@
 
 @keyframes SlideInRightAnim
 {
-	from {right:105%}
-	to {right:0px}
+	from {left:-105%}
+	to {left:0px}
 }
 
 body
@@ -18,7 +18,7 @@ body
     font-family: fantasy;
     font-stretch: expanded;
     font-style: bold;
-    -webkit-text-stroke: 1px #00000032
+    /*-webkit-text-stroke: 1px #00000032 */
 }
 
 .Big
@@ -45,7 +45,6 @@ body
     animation-play-state: running;
     animation-timing-function: ease-out;
 
-    right:100%;
     position: absolute;
 }
 

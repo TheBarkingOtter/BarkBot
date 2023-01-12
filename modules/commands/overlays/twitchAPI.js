@@ -1,10 +1,22 @@
+const axios = require("axios");
 const jsonUtility = require("./../../json_utility");
 const overlay = require("./overlay.js");
 const twitchBot = require("./../../../modules/twitch_bot.js");
 const { commands } = require("../thebarkingotter.js");
 
+const GQL_QUERY = "https://thebarkingotter.com/gameworks/twitchGQL.php";
+
+let clientId = "rat7tckwdp2962ahwqlorv2qg4lzcr";
+let token = "ptf3ji7tyh1pkyy0am8zuwjyi8ium2";
+
 //TODO: Write token to file with timestamp.
 // Check for new token after some time has passed.
+
+function Initialize(_clientId, _token)
+{
+    clientId = _clientId;
+    token = _token;
+}
 
 function SendRequest(query, command)
 {
@@ -25,6 +37,28 @@ function SendRequest(query, command)
     overlay.WriteData();
 
     console.log("Invoked " + query + " with the target " + channel);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Sends named query with encoded data. Returns the entire response object.
+///////////////////////////////////////////////////////////////////////////////////
+async function SendGqlQuery(query, data)
+{
+    let output = await axios({
+        method: 'post',
+        url: GQL_QUERY,
+        data: {
+            accessToken: token,
+            clientId: clientId,
+            data: data,
+            query: query
+        },
+        //httpsAgent: new https.Agent({ keepAlive: true }),
+        maxBodyLength: Number.MAX_SAFE_INTEGER,
+        maxContentLength: Number.MAX_SAFE_INTEGER
+    });
+
+    return output.data;
 }
 
 function ShowClip(command)
@@ -58,13 +92,26 @@ function Shoutout(command)
     let sanitizedUsername =  jsonUtility.SanitizeUsername(username);
     let url = "twitch.tv/" + sanitizedUsername;
 
-    twitchBot.Say(twitchBot.channels[0], "Otter recommends " + username
+    twitchBot.Say("thebarkingotter", "Otter recommends " + username
         + " , please be sure to follow and show support at " + url);
 
     command.arguments[0] = sanitizedUsername;
     
         
     SendRequest("shoutout", command);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// Queries the most recent stream date and list of recent games.
+// Input is expected as a string, not an array or object.
+///////////////////////////////////////////////////////////////////////////////////
+async function UpdateRecentStreamData(channelsString)
+{
+    overlay.ReadData();
+    let data = overlay.GetData();
+    data.recentStreamData = await SendGqlQuery("recentStreamData", channelsString);
+    overlay.WriteData();
+    return data.recentStreamData;
 }
 
 module.exports =
@@ -74,5 +121,6 @@ module.exports =
         "!showclip" : ShowClip,
         "!showpfp" : ShowProfilePic,
         "!shoutout" : Shoutout
-    }
+    },
+    Initialize, UpdateRecentStreamData
 };

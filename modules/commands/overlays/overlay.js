@@ -81,6 +81,7 @@ function CreateJsonPath(path)
     for(let i = 0; i < elements.length; ++i)
     {
         let prop = elements[i];
+        console.log(prop);
         if(!obj.hasOwnProperty(prop))
         {
             obj[prop] = {};

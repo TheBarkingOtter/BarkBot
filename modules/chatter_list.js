@@ -2,11 +2,14 @@ const filesystem = require("fs");
 const jsonUtility = require("./json_utility");
 const logConsole = require("./log_console.js");
 const logFile = require("./log_file.js");
+const twitchApi = require("./commands/overlays/twitchAPI.js");
 const twitchBot = require("./twitch_bot.js");
-const overlay = require("./commands/overlays/overlay.js")
+const overlay = require("./commands/overlays/overlay.js");
+//const { channel } = require("diagnostics_channel");
 
 // format: channelString : pathString
 var logPathMap = { };
+let guestbookPathMap = { };
 let firstTimeChatCallbacks = new Set();
 
 ///////////////////////////////////////////////////////////
@@ -29,9 +32,14 @@ class Chatter
 	}
 }
 
-// A map of Chatters
-var userMap = {};
+// A map of users currently logged into chat. This includes lurkers.
+let userMap = {};
+
+// An array of all users who've sent at least one message on this date.
 let nonlurkers = [];
+
+// An array of all users that have ever spoken in chat. Gets written to a file.
+let guestbook = [];
 
 ///////////////////////////////////////////////////////////
 // Initializes chatter tracking.
@@ -60,7 +68,51 @@ function Initialize(bot, logDirectory)
 	var botOptions = bot.GetClient().getOptions();
 	for(var index in botOptions.channels)
 	{
-		var channelName = botOptions.channels[index];
+		let channelName = botOptions.channels[index];
+
+		// If there's already a guestbook, get recent stream data for
+		// everyone in there. This gets sent to the overlays for shoutouts.
+		guestbookPathMap[channelName] = logDirectory + "/guestbook_" + channelName + ".txt";
+		if(filesystem.existsSync(guestbookPathMap[channelName]))
+		{
+			filesystem.readFile(guestbookPathMap[channelName], options, async(error, fileContents)=>
+			{
+				if(error)
+					throw error;
+
+				try
+				{
+					let json = JSON.parse(fileContents);
+					let str = '["' + json[0];
+					for(let i = 1; i < json.length; ++i)
+					{
+						//TODO: we can do extra processing or culling here
+						str += '","' + json[i];
+					}
+					str += '"]';
+					json = await twitchApi.UpdateRecentStreamData(str);
+					for(let property in json)
+					{
+						guestbook.push(property);
+					}
+				}
+				catch(e)
+				{
+					var message = e.message;
+					var lastSpace = message.lastIndexOf(' ');
+					var lineNumberString = message.substring(lastSpace + 1);
+					var lineNumber = parseInt(lineNumberString);
+					var substring = fileContents.substring(lineNumber - 10);
+					console.log(message);
+					console.log(substring);
+				}
+
+				console.log("successfully parsed guestbook for channel", channelName);
+			});
+		}
+
+
+
 		console.log("Initializing chatter list for ", channelName);
 		var logPath = logDirectory + "/users_" + channelName + '_' + year + month + day + ".txt";
 		
@@ -89,6 +141,11 @@ function Initialize(bot, logDirectory)
 				{
 					// for this channel, pull the contents into the userMap
 					userMap[channelName] = JSON.parse(fileContents);
+					for(let prop in userMap[channelName])
+					{
+						if(userMap[channelName].isLurking == false)
+							UpdateNonlurkers(channelName, prop);
+					}
 				}
 				catch(e)
 				{
@@ -107,8 +164,12 @@ function Initialize(bot, logDirectory)
 				}
 				
 				
-				console.log("successfully parse log file for channel", channelName);
+				console.log("successfully parsed log file for channel", channelName);
 			});
+		}
+		else
+		{
+			overlay.UpdateChatterList([]);
 		}
 	}
 	
@@ -254,7 +315,21 @@ function WriteChannelLog(channel)
 	{
 		console.log(e);
 	}
-	
+}
+
+///////////////////////////////////////////////////////////
+// Checks if the guestbook needs updating, and does it.
+///////////////////////////////////////////////////////////
+function UpdateGuestbook(path, user)
+{
+	let index = guestbook.indexOf(user);
+	if(index == -1)
+	{
+		guestbook.push(user);
+		let json = JSON.stringify(guestbook);
+		json = jsonUtility.FixBracePairingProblems(json).string;
+		filesystem.writeFileSync(path, json);
+	}
 }
 
 ///////////////////////////////////////////////////////////
@@ -269,9 +344,10 @@ function OnWriteFile(error)
 }
 
 
-///////////////////////////////////////////////////////////
-// Reports file writing success or failure.
-///////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
+// Called when someone speaks. If they were previously lurking, they're not
+// any more. This is used for a variety of purposes.
+//////////////////////////////////////////////////////////////////////////////////////////
 function UpdateNonlurkers(channel, activeUsername)
 {
 	let user = userMap[channel][activeUsername];
@@ -281,6 +357,10 @@ function UpdateNonlurkers(channel, activeUsername)
 		nonlurkers.push(activeUsername);
 		overlay.UpdateChatterList(nonlurkers);
 		logConsole.LogInRandomColor(activeUsername + " is chatting for the first time!");
+		
+		if(channel != '#' + activeUsername)
+			UpdateGuestbook(guestbookPathMap[channel], activeUsername);
+			
 		//overlay.PlaySound("enter");
 	}
 }

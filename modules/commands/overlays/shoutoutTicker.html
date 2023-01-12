@@ -2,20 +2,22 @@
 <html>
 	<head>
 		<meta charset="utf-8">
-		<title>Twitch API Overlay</title>
+		<title>Shoutout Ticker</title>
 		<link rel="stylesheet" href="style.css">
 		
 		<!-- Load the Twitch embed script -->
 		<script src="https://embed.twitch.tv/embed/v1.js"></script>
-        <script src="https://thebarkingotter.com/gameworks/lib/HtmlUtility.js"></script>
-        <script src="https://thebarkingotter.com/gameworks/lib/TwitchAPI.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/HtmlUtility.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/TwitchAPI.js"></script>
         <script src= "https://player.twitch.tv/js/embed/v1.js"></script>
         <script type="text/javascript">
 
+            // in seconds
             const POLL_INTERVAL = 1;
-            const SHOUTOUT_DURATION = 10;
-            const DOWN_TIME = 10;
-            //const DAYS_SINCE_LAST_STREAM_THRESHOLD = 14;
+            const SHOUTOUT_DURATION = 15;
+            const DOWN_TIME = 45;
+
+            const DAYS_SINCE_LAST_STREAM_THRESHOLD = 31;
 
 
             const CLIENT_ID = "rat7tckwdp2962ahwqlorv2qg4lzcr";
@@ -33,53 +35,30 @@
             let tickerHeight = 80;
             let tickerWidth = 1080;
 
-            let streamersFollows = null;
-
+            let masterStreamData = null;
             let lastChange = Date.now();
+            let lastShoutout = null;
+
+            let openSet = [];
 
             async function Init()
             {
+                RequestFile("overlay.json", OnLoadFile);
 
-                ParseUrl();
-
-                accessToken = FindKeyValuePair(thisUrl, "token");
-                if(accessToken == null)
-                    return;
-
-                InitTwitchApi(CLIENT_ID, accessToken, QUERIES);
+                ParseUrl();                
 
                 tickerHeight = GetOrFallback("height", tickerHeight);
                 tickerWidth = GetOrFallback("width", tickerWidth);
 
                 let div = document.getElementById("shoutout");
-                div.style.height = tickerHeight.toString() + "px";
-                div.style.width = tickerWidth.toString() + "px";
+                //div.style.height = tickerHeight.toString() + "px";
+                //div.style.width = tickerWidth.toString() + "px";
 
-                let pfpDiameter = tickerHeight - 10;
+                //let pfpDiameter = tickerHeight - 10;
+                /*let pfpDiameter = tickerWidth / 2;
                 let pfpCircle = document.getElementById("pfpCircle");
                 pfpCircle.style.width = pfpDiameter.toString() + "px";
-                pfpCircle.style.height = pfpDiameter.toString() + "px";
-
-                if(GetOrFallback("debug", false) != false)
-                {
-                    debug = true;
-
-                    let shoutoutDiv = document.getElementById("shoutout");
-                    shoutoutDiv.style.display = "block";
-
-                    let channel = GetOrFallback("channel", null);
-                    if(channel != null)
-                    {
-                        Shoutout();
-                    }
-                }
-
-                // do checks at long intervals
-                setInterval(Tick, (POLL_INTERVAL) * 1000);
-            
-                channel = GetOrFallback("channel", null);
-                if(channel != null)
-                    streamersFollows = await GetFollowsByUserAsync(channel);
+                pfpCircle.style.height = pfpDiameter.toString() + "px";*/
             }
 
             function Tick()
@@ -91,48 +70,131 @@
             {
                 let json = JSON.parse(request.response);
 
-                let chatters = json.chatters;
-                for(let chatter in chatters)
+                if(accessToken == null)
                 {
-                    // loop through
-                    // see who's a streamer
-                    // get last stream date
-                    // see if it's recent
+                    accessToken = json.token;
+                    InitTwitchApi(CLIENT_ID, accessToken);
+
+                    if(GetOrFallback("debug", false) != false)
+                    {
+                        debug = true;
+
+                        let shoutoutDiv = document.getElementById("shoutout");
+                        shoutoutDiv.style.display = "block";
+
+                        let channel = GetOrFallback("channel", null);
+                        if(channel != null)
+                        {
+                            Shoutout(channel);
+                        }
+                    }
+
+                    setInterval(Tick, (POLL_INTERVAL) * 1000);
+                    return;
                 }
 
-
-
-
-                
-
-                // if a shoutout was created recently, perform it
+                // If a shoutout has been directly requested,
+                // it takes priority and happens immediately.
                 if(lastChange < json.twitchAPI.time)
                 {
                     channel = json.twitchAPI.channel;
-                    if(channel == null || channel == undefined || channel == "")
-                    {
-                        return;
-                    }
-
                     queryName = json.twitchAPI.query;
-                    if(queryName == null || queryName == undefined || queryName == "")
+                    //doShowClip = json.twitchAPI.doShowClip;
+                    IdentifyAndPerformQuery();
+                    lastChange = json.twitchAPI.time;
+                    return;
+                }
+                 
+                // If a shoutout happened recently, auto shoutouts are on
+                // cooldown and we keep ticking until they're not.
+                let now = Date.now().valueOf();
+                const COOLDOWN = (SHOUTOUT_DURATION + DOWN_TIME) * 1000;
+                if(lastShoutout != null && lastShoutout + COOLDOWN > now)
+                    return;
+
+                // We begin the process of choosing which streamers to auto shoutout.
+                // The rules are:
+                //  - they must be in the guestbook at the start of a bot session
+                //  -   aka have chatted in your stream before today
+                //  - they must have chatted in your stream today as well
+                //  -   we don't call out lurkers
+                let chatters = json.chatters;
+                if(masterStreamData == null)
+                {
+                    masterStreamData = json.recentStreamData;
+                    masterStreamData.length = 0;
+
+                    // Exclude if last stream was too long ago.
+                    // Streamers we don't exclude get tallied up.
+                    let list = "";
+                    for(let streamer in masterStreamData)
                     {
-                        return;
+                        let lastStream = masterStreamData[streamer].lastStreamTime;
+                        if(lastStream == null)
+                        {
+                            delete masterStreamData[streamer];
+                            continue;
+                        }
+                            
+                        lastStream = new Date(lastStream);
+                        lastStream = lastStream.valueOf();
+                        if(lastStream == null ||
+                            now - lastStream > 1000 * 60 * 60 * 24 * DAYS_SINCE_LAST_STREAM_THRESHOLD)
+                        {
+                            delete masterStreamData[streamer];
+                        }
+                        else
+                        {
+                            ++masterStreamData.length;
+                            list += streamer + ",";
+                        }
                     }
 
-                    //doShowClip = json.twitchAPI.doShowClip;
-
-                    // actually perform the query (TwitchApi.js)
-                    IdentifyAndPerformQuery();
-
-                    lastChange = json.twitchAPI.time;
+                    console.log("streamer list after filters:", list);
                 }
 
+                // Shouting out the same streamer over and over is cringe
+                if(masterStreamData == null || masterStreamData.length < 2)
+                    return;
+
+                // If the open set is empty we populate it here.
+                // This is where we check if they're in chat and not lurking.
+                if(openSet.length <= 0)
+                {
+                    for(let streamer in masterStreamData)
+                    {
+                        let index = chatters.indexOf(streamer);
+                        if(index == -1)
+                            continue;
+                        
+                        openSet.push(streamer);
+                    }      
+                }
+
+                // Pick a random one from the set to shout out.
+                let random = Math.floor(Math.random() * openSet.length);
+                channel = openSet[random];
                 
+                // Catch errors.
+                if(channel == null || channel == undefined
+                    || channel == "" || masterStreamData.hasOwnProperty(channel) == false)
+                {
+                    console.log("invalid channel");
+                    return;
+                }
+
+                console.log("shouting out " + channel);
+                openSet.splice(random, 1);
+
+                queryName = "shoutout";
+
+                IdentifyAndPerformQuery();
             }
 
             async function Shoutout()
             {
+                lastShoutout = Date.now().valueOf();
+
                 await PopulateDisplayName(channel, "user");
 
                 await PopulateProfilePic(channel, "profilePic");
@@ -140,7 +202,6 @@
                 let categoryWrapper = await PopulateLastCategory(channel, "category");
 
                 let shoutoutDiv = document.getElementById("shoutout");
-                shoutoutDiv.style.display = "block";
 
                 let titleWrapper = null;
                 let emoteTags = [];
@@ -153,6 +214,7 @@
                     emotesWrapper = document.getElementById("emoteWrapper");
 
                     emoteTags = await PopulateEmotes(channel, "emotes");
+                    shoutoutDiv.style.display = "block";
                     if(emoteTags.length > 0)
                     {
                         emotesWrapper.style.display = "flex";
@@ -160,6 +222,33 @@
                     else
                     {
                         emotesWrapper.style.display = "none";
+                    }
+
+                    let gamesWrapper = document.getElementById("gamesWrapper");
+                    let recentGames = masterStreamData[channel].games;
+                    if(recentGames.length > 0)
+                    {
+                        gamesWrapper.style.display = "flex";
+                    }
+                    else
+                    {
+                        gamesWrapper.style.display = "none";
+                    }
+
+                    let gamesDiv = document.getElementById("games");
+                    let gameImages = [];
+                    for(let i = 0; i < recentGames.length; ++i)
+                    {
+                        let url = recentGames[i].node.boxArtURL;
+                        url = url.replace("{width}", "48");
+                        url = url.replace("{height}", "64");
+
+                        let newImg = document.createElement("img");
+                        gamesDiv.appendChild(newImg);
+                        newImg.src = url;
+                        //newImg.style.marginLeft = "1px";
+                        //newImg.style.flex = "none";
+                        gameImages.push(newImg);
                     }
 
                     if(debug == true)
@@ -174,6 +263,12 @@
                         // remove from rendering
                         emoteTags[prop].remove();
                     }
+
+                    for(let prop in gameImages)
+                    {
+                        // remove from rendering
+                        gameImages[prop].remove();
+                    }
                 }
             }
 
@@ -184,50 +279,77 @@
 
 
     <body onload="Init()">
-        <!--Div containing everything-->
-        <div id="shoutout" class="Blocky" style="display:none; left: 10px; position:relative; font-size:small">
-            <!-- outer table-->
-            <table>
+
+        <div id="shoutout" class="Blocky" style="display:none; left:1px; position:relative; font-size:small; width:135px">
+            <div class="SlideInRight" style="background-color: rgb(255,255,0); margin:1px; padding:2px"></table>
+                <div style="color:rgb(0,200,255);margin-bottom:5px">Otter recommends</div>
+                <div id="user" style="color:rgb(255,128,128); font-size:18px; text-align: center;">
+                    abcdefghijklmnopqrstuvwxy
+                </div>
+                <div id="pfpCircle" class="Circle" style="background-color:green; border:solid green; margin:auto; width:32px; height:32px">
+                    <img id="profilePic" style="height:100%"/>
+                </div>
+                <div id="category" style="color:rgb(0,200,255); font-size:14px; text-align: center; width:inherit"></div>
+                <div id="title" style="color:rgb(255,128,128); font-size:14px; text-align: center; width:inherit"></div>
+                <div id="emoteWrapper" style="width:inherit;">
+                    <!--<div style="align-self:center; margin:5px;color:rgb(255,128,128)">Emotes: </div> -->
+                    <div id="emotes" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+                <div id="gamesWrapper" style="width:inherit;">
+                    <!--<div style="align-self:center;color:rgb(0,200,255);">Recent Games</div><br/>-->
+                    <div id="games" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- short and wide version -->
+        <!--Div containing everything--
+        <div id="shoutout" class="Blocky" style="display:none; left: 10px; position:relative; font-size:small; padding:10px;">
+            
+            <!-- outer table--
+            <table class="SlideInRight" style="background-color: rgb(255,255,0);">
+                <tr>Otter recommends:</tr>
                 <tr>
-                    <!-- username -->
+                    <!-- username --
                     <td>
-                        <div id="user" class="Biggest" style="color:cyan;">abcdefghijklmnopqrstuvwxy</div>
+                        <div id="user" class="Biggest" style="color:rgb(0,200,255);">abcdefghijklmnopqrstuvwxy</div>
                     </td>
-                    <!-- profile pic-->
+                    <!-- profile pic--
                     <td>
                         <div id="pfpCircle" class="Circle" style="background-color:green; border:solid green">
                             <img id="profilePic" style="height:100%"/>
                         </div>
                     </td>
-                    <!-- title , category, emotes-->
+                    <!-- title , category, emotes--
                     <td>
                         <table>
                             <tr>
-                                <!-- title -->
+                                <!-- title --
                                 <td>
-                                    <div style="align-self:center; margin:5px;">Last seen playing:</div> 
+                                    <div style="align-self:center; margin:5px;color:rgb(255,128,128)">Last seen playing:</div> 
                                 </td>
                                 <td>
-                                    <div id="category" style="color:cyan;"></div>
+                                    <div id="category" style="color:rgb(0,200,255);"></div>
                                 </td>
-                                <!-- category -->
+                                <!-- category --
                                 <td>
-                                    <div style="align-self:center; margin:5px;">Most recent title: </div> 
+                                    <div style="align-self:center; margin:5px;color:rgb(255,128,128)">Most recent title: </div> 
                                 </td>
                                 <td>
-                                    <div id="title" style="color:cyan;"></div>
+                                    <div id="title" style="color:rgb(0,200,255);"></div>
                                 </td>
                             </tr>
                         </table>
-                        <!-- emotes -->
+                        <!-- emotes --
                         <div id="emoteWrapper" style="display:flex;">
-                            <div style="align-self:center; margin:5px;">Emotes: </div> 
+                            <div style="align-self:center; margin:5px;color:rgb(255,128,128)">Emotes: </div> 
                             <div id="emotes" style="color:cyan;"></div>
                         </div>
                     </td>
                 </tr>
             </table>
-            
+        -->
 
         </div>
 

@@ -5,9 +5,9 @@ let modules =
 };
 
 //HACK: couldn't figure out how to dynamically determine the path of this js file
-const BOT_PATH = 'e:\\Projects\\BarkBot\\bots\\otter\\';
+const BOT_PATH = 'C:/Users/Scott/Documents/GitHub/BarkBot/bots/otter';
 
-var configMap = modules.twitchBot.ParseConfig('config.txt');
+var configMap = modules.twitchBot.ParseConfig(BOT_PATH + '/' + 'config.txt');
 let configModules = configMap.modules;
 
 
@@ -55,6 +55,7 @@ const viewers = require("./../../modules/commands/viewers.js");
 const chatterList = require('./../../modules/chatter_list.js');
 const logFile = require("./../../modules/log_file.js");
 const commandTracking = require("./../../modules/commands/commandTracking")
+const shoost = require("./../../modules/commands/overlays/shoost.js")
 
 const botConsole = require('./../../modules/twitch_bot_console.js');
 
@@ -83,6 +84,7 @@ function main()
 		modules.twitchBot.AddCommands(points.commands);
 		modules.twitchBot.AddCommands(viewers.commands);
 		modules.twitchBot.AddCommands(credits.commands);
+		modules.twitchBot.AddCommands(shoost.commands);
 	
 		botConsole.SetCustomCommands(configMap.consoleCommands);
 		
@@ -91,14 +93,16 @@ function main()
 			['thebarkingotter']
 		);
 		
-		chatterList.Initialize(modules.twitchBot, "C:/Twitch/Userlists");
-		logFile.Initialize(modules.twitchBot, "C:/Twitch/Logs");
-		overlay.Initialize("C:/Twitch/overlay.json");
+		twitchApi.Initialize(configMap.clientId, configMap.token);
+		overlay.Initialize("E:/Twitch/overlay.json");
+		chatterList.Initialize(modules.twitchBot, "E:/Twitch/Userlists");
+		logFile.Initialize(modules.twitchBot, "E:/Twitch/Logs");
 		goals.Initialize(modules.twitchBot);
-		points.Initialize(modules.twitchBot, "C:/Twitch");
+		points.Initialize(modules.twitchBot, "E:/Twitch");
 		//emoteWall.Initialize(modules.twitchBot);
-		commandTracking.Initialize(modules.twitchBot, "C:/Twitch/commandRecord_");
+		commandTracking.Initialize(modules.twitchBot, "E:/Twitch/commandRecord_");
 		//viewers.InitializeViewerLogging(twitchBot);
+		
 		
 		modules.twitchBot.ConnectAndRun();
 	}

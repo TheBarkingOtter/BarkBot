@@ -1,0 +1,364 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Shoost!</title>
+		<link rel="stylesheet" href="https://www.thebarkingotter.com/style.css">
+        <script src="https://thebarkingotter.com/gameworks/HtmlUtility.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/CanvasCore.js"></script>
+        <script src="https://thebarkingotter.com/gameworks/TwitchAPI.js"></script>
+		<script>
+
+            const CLIENT_ID = "rat7tckwdp2962ahwqlorv2qg4lzcr";
+
+            const SHOOT_SPACING = 150;
+
+            let time = Date.now();
+            let profilePics = [];
+
+            class Ship
+            {
+                //TODO: replace dir with actual rotation stuff
+                constructor(x, y, color, speed, dir, img)
+                {
+                    this.WIDTH = 70;
+                    this.HEIGHT = 70;
+                    this.MAX_SPEED = 10;
+
+                    this.dir = dir;
+                    this.rect = new Rectangle(x,y,this.WIDTH, this.HEIGHT)
+                    
+                    /*
+                    this.body = new Rectangle(x, y, this.WIDTH, this.HEIGHT);
+                    this.barrel = new Rectangle(x + this.WIDTH, y + this.HEIGHT / 2,
+                        10, 5);
+                        */
+
+                    if(this.dir == "up")
+                    {
+                        this.body = new Rectangle(x, y+10, this.WIDTH, this.HEIGHT - 10);
+                        this.barrel = new Rectangle(x + this.WIDTH / 2, y, 5, 10);
+                    }
+                    else
+                    {
+                        this.body = new Rectangle(x, y, this.WIDTH, this.HEIGHT - 10);
+                        this.barrel = new Rectangle(x + this.WIDTH / 2, y + this.HEIGHT, 5, 10);
+                    }
+                    
+                    this.color = color;
+                    this.speed = speed;
+                    this.img = img;
+                    this.velocity = {x:0, y:0};
+
+                    this.target = null;
+                }
+
+                Draw = function()
+                {
+                    DrawRectangle(this.color, this.body.x, this.body.y,
+                        this.body.w, this.body.h);
+                    DrawRectangle(this.color, this.barrel.x, this.barrel.y,
+                        this.barrel.w, this.barrel.h);
+
+                    if(this.img != null)
+                    {
+                        DrawImage(this.img, this.body.x, this.body.y,
+                            this.body.w, this.body.h);
+                    }
+                }
+
+                SetTarget = function(target)
+                {
+                    this.target = target;
+                }
+
+                Update = function(dt)
+                {
+                    if(this.target == null)
+                        return;
+
+                    // figure out direction to go
+                    // destination should be vertical to target
+                    let targetPosition = {
+                        x: this.target.body.x,
+                        y: this.target.body.y,
+                    };
+
+                    if(this.dir == "up")
+                    {
+                        targetPosition.y += SHOOT_SPACING;
+                    }
+                    else
+                    {
+                        targetPosition.y -= SHOOT_SPACING;
+                    }
+
+                    // such that pewpew may occur
+                    let diff = {
+                        x: targetPosition.x - this.body.x,
+                        y: targetPosition.y - this.body.y
+                    };
+
+                    Normalize(diff);
+
+                    let rad = DegreesToRadians(this.rotation);
+                    let x = Math.cos(rad);
+                    let y = Math.sin(rad);
+
+                    this.velocity.x += diff.x * this.speed * dt;
+                    this.velocity.y += diff.y * this.speed * dt;
+
+                    let currentSpeed = GetVectorLength(this.velocity);
+                    if(currentSpeed >= this.MAX_SPEED)
+                    {
+                        Normalize(this.velocity);
+                        this.velocity.x *= this.MAX_SPEED;
+                        this.velocity.y *= this.MAX_SPEED;
+                    }
+                    
+                    this.Move(this.velocity, dt);
+                }
+
+                Move = function(diff, dt = 1)
+                {
+                    this.rect.x += diff.x * dt;
+                    this.rect.y += diff.y * dt;
+
+                    this.body.x += diff.x * dt;
+                    this.body.y += diff.y * dt;
+
+                    this.barrel.x += diff.x * dt;
+                    this.barrel.y += diff.y * dt;
+                }
+            }
+
+            let gameObjects = [];
+            let redTeam = [];
+            let blueTeam = [];
+
+            async function Init()
+            {
+                ParseUrl();
+                accessToken = FindKeyValuePair(thisUrl, "token");
+                if(accessToken == null)
+                    return;
+
+                InitTwitchApi(CLIENT_ID, accessToken);
+                InitializeCanvas();
+
+                let json = await FetchPage("overlay.json");
+
+                // get pfp's for all users and apply them to ships
+                let users = json.shoost.nextGame;
+                await LoadPfps(users);
+
+                CreateObjects();
+                AssignTargets();
+
+                RunGameLoop(GameLoop);
+
+                /*setInterval(()=>{
+                    window.location.reload();
+                }, 15*1000);*/
+            }
+
+            async function LoadPfps(users)
+            {
+                if(users == null || users == undefined)
+                    return;
+
+                profilePics = [];
+                for(let i = 0; i < users.length; ++i)
+                {
+                    let url = await GetProfilePicUrl(users[i]);
+                    let img = new Image();
+                    img.src = url;
+                    profilePics.push(img);
+                }
+            }
+
+            function CreateObjects()
+            {
+                let imgIndex = 0;
+
+                for(let i = 0; i < 5; ++i)
+                {
+                    let x = 150 * (i + 1);
+                    let y = 100;
+
+                    let img = (imgIndex < profilePics.length) ? profilePics[imgIndex] : null;
+                    let ship = new Ship(x, y, "blue", 1, "down", img);
+                    gameObjects.push(ship);
+                    blueTeam.push(ship);
+
+                    ++imgIndex;
+                }
+
+                for(let i = 0; i < 5; ++i)
+                {
+                    let x = 150 * (i + 1);
+                    let y = 1500;
+
+                    let img = (imgIndex < profilePics.length) ? profilePics[imgIndex] : null;
+                    let ship = new Ship(x, y, "red", 1, "up", img);
+                    gameObjects.push(ship);
+                    redTeam.push(ship);
+
+                    ++imgIndex;
+                }
+            }
+
+            function AssignTargets()
+            {
+                for(let i = 0; i < blueTeam.length; ++i)
+                {
+                    let index = Math.floor(Math.random() * redTeam.length);
+                    blueTeam[i].SetTarget(redTeam[index]);
+                }
+
+                for(let i = 0; i < redTeam.length; ++i)
+                {
+                    let index = Math.floor(Math.random() * blueTeam.length);
+                    redTeam[i].SetTarget(blueTeam[index]);
+                }
+            }
+
+            function GameLoop()
+            {
+                Render();
+                Update();
+            }
+
+            function Render()
+            {
+                 // Clear and redraw background
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.fillStyle = "green";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+
+                for(let i = 0; i < gameObjects.length; ++i)
+                {
+                    gameObjects[i].Draw();
+                }
+            }
+
+            function Update()
+            {
+                setInterval(AssignTargets, 5*1000);
+                setInterval(RandomizeGroupMovement, 5*1000);
+
+                for(let i = 0; i < gameObjects.length; ++i)
+                {
+                    gameObjects[i].Update(1.0/60.0);
+                }
+
+                Scatter();
+                StayOnScreen();
+
+            }
+
+            
+
+            function Scatter()
+            {
+                for(let i = 0; i < gameObjects.length; ++i)
+                {
+                    let pos = {
+                        x: gameObjects[i].rect.x,
+                        y: gameObjects[i].rect.y
+                    };
+
+                    for(let j = i + 1; j < gameObjects.length; ++j)
+                    {
+                        let otherPos = {
+                            x: gameObjects[j].rect.x,
+                            y: gameObjects[j].rect.y
+                        };
+
+                        let diff = {
+                            x: otherPos.x - pos.x,
+                            y: otherPos.y - pos.y
+                        };
+
+                        if(GetVectorLength(diff) < SHOOT_SPACING)
+                        {
+                            Normalize(diff);
+                            diff.x *= -1;
+                            diff.y *= -1;
+                            gameObjects[i].Move(diff);
+                        }
+                    }
+                }
+            }
+
+            function StayOnScreen()
+            {
+                for(let i = 0; i < gameObjects.length; ++i)
+                {
+                    let pos = {
+                        x: gameObjects[i].rect.x,
+                        y: gameObjects[i].rect.y
+                    };
+
+                    let movement = {x:0, y:0};
+                    let didCorrect = false;
+
+                    if(pos.x < 0)
+                    {
+                        movement.x += 1;
+                        didCorrect = true;
+                    }
+                    else if(pos.x > canvas.width)
+                    {
+                        movement.x -= 1;
+                        didCorrect = true;
+                    }
+
+                    if(pos.y < 0)
+                    {
+                        movement.y += 1;
+                        didCorrect = true;
+                    }
+                    else if(pos.y > canvas.height)
+                    {
+                        movement.y -= 1;
+                        didCorrect = true;
+                    }
+
+                    if(didCorrect)
+                    {
+                        for(let j = 0; j < gameObjects.length; ++j)
+                        {
+                            gameObjects[j].Move(movement);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            function RandomizeGroupMovement()
+            {
+                let targetPos = {
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height
+                };
+
+                for(let i = 0; i < gameObjects.length; ++i)
+                {
+                    let diff = {
+                        x: targetPos.x - gameObjects[i].rect.x,
+                        y: targetPos.y - gameObjects[i].rect.y
+                    };
+
+                    Normalize(diff);
+                    gameObjects[i].Move(diff);
+                }
+            }
+
+        </script>
+    </head>
+    <body onload="Init()">
+        <canvas id="main" class="fullscreen">
+		</canvas>
+    </body>
+</html>
