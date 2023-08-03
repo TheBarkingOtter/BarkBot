@@ -7,6 +7,7 @@
 		
 		<!-- Load the Twitch embed script -->
 		<script src="https://embed.twitch.tv/embed/v1.js"></script>
+        <script src="http://thebarkingotter.com/gameworks/howler/howler.js"></script>
         <script src="https://thebarkingotter.com/gameworks/HtmlUtility.js"></script>
         <script src="https://thebarkingotter.com/gameworks/TwitchAPI.js"></script>
         <script src= "https://player.twitch.tv/js/embed/v1.js"></script>
@@ -15,10 +16,11 @@
             // in seconds
             const POLL_INTERVAL = 1;
             const SHOUTOUT_DURATION = 15;
-            const DOWN_TIME = 45;
+            
+            
+            const HIGHLIGHT_INTERVAL = 20;  // minutes
 
-            const DAYS_SINCE_LAST_STREAM_THRESHOLD = 31;
-
+            const DAYS_SINCE_LAST_STREAM_THRESHOLD = 31;    // days
 
             const CLIENT_ID = "rat7tckwdp2962ahwqlorv2qg4lzcr";
             const QUERIES = {
@@ -29,15 +31,18 @@
             };
 
             let doShowClip = true;
+            let shoutOutType = "auto";
 
             let debug = false;
 
             let tickerHeight = 80;
             let tickerWidth = 1080;
+            let downTime = 285;
 
             let masterStreamData = null;
             let lastChange = Date.now();
             let lastShoutout = null;
+            let lastHighlight = 0;//Date.now().valueOf();
 
             let openSet = [];
 
@@ -49,6 +54,7 @@
 
                 tickerHeight = GetOrFallback("height", tickerHeight);
                 tickerWidth = GetOrFallback("width", tickerWidth);
+                downTime = GetOrFallback("downTime", downTime);
 
                 let div = document.getElementById("shoutout");
                 //div.style.height = tickerHeight.toString() + "px";
@@ -79,8 +85,8 @@
                     {
                         debug = true;
 
-                        let shoutoutDiv = document.getElementById("shoutout");
-                        shoutoutDiv.style.display = "block";
+                        //let shoutoutDiv = document.getElementById("commandShoutout");
+                        //shoutoutDiv.style.display = "block";
 
                         let channel = GetOrFallback("channel", null);
                         if(channel != null)
@@ -99,6 +105,7 @@
                 {
                     channel = json.twitchAPI.channel;
                     queryName = json.twitchAPI.query;
+                    shoutOutType = "command";
                     //doShowClip = json.twitchAPI.doShowClip;
                     IdentifyAndPerformQuery();
                     lastChange = json.twitchAPI.time;
@@ -108,7 +115,7 @@
                 // If a shoutout happened recently, auto shoutouts are on
                 // cooldown and we keep ticking until they're not.
                 let now = Date.now().valueOf();
-                const COOLDOWN = (SHOUTOUT_DURATION + DOWN_TIME) * 1000;
+                const COOLDOWN = (SHOUTOUT_DURATION + downTime) * 1000;
                 if(lastShoutout != null && lastShoutout + COOLDOWN > now)
                     return;
 
@@ -170,6 +177,9 @@
                         openSet.push(streamer);
                     }      
                 }
+				
+				if(debug && openSet.length <= 0)
+					openSet.push("velvetcrayon");
 
                 // Pick a random one from the set to shout out.
                 let random = Math.floor(Math.random() * openSet.length);
@@ -187,6 +197,7 @@
                 openSet.splice(random, 1);
 
                 queryName = "shoutout";
+                shoutOutType = "auto";
 
                 IdentifyAndPerformQuery();
             }
@@ -195,13 +206,13 @@
             {
                 lastShoutout = Date.now().valueOf();
 
-                await PopulateDisplayName(channel, "user");
+                await PopulateDisplayName(channel, shoutOutType + "Name");
 
-                await PopulateProfilePic(channel, "profilePic");
+                await PopulateProfilePic(channel, shoutOutType + "Pfp");
 
-                let categoryWrapper = await PopulateLastCategory(channel, "category");
+                let categoryWrapper = await PopulateLastCategory(channel, shoutOutType + "Category");
 
-                let shoutoutDiv = document.getElementById("shoutout");
+                let shoutoutDiv = document.getElementById(shoutOutType + "Shoutout");
 
                 let titleWrapper = null;
                 let emoteTags = [];
@@ -209,12 +220,32 @@
 
                 if(categoryWrapper != null)
                 {
-                    await PopulateTitle(channel, "title");
-                    titleWrapper = document.getElementById("titleWrapper");
-                    emotesWrapper = document.getElementById("emoteWrapper");
+                    await PopulateTitle(channel, shoutOutType + "Title");
+                    titleWrapper = document.getElementById(shoutOutType + "TitleWrapper");
+                    emotesWrapper = document.getElementById(shoutOutType + "EmoteWrapper");
 
-                    emoteTags = await PopulateEmotes(channel, "emotes");
+                    emoteTags = await PopulateEmotes(channel, shoutOutType + "Emotes");
+
                     shoutoutDiv.style.display = "block";
+
+                    let recentGames = [];
+                    let blurb = null;
+
+                    let now = Date.now().valueOf();
+                    
+                    if(masterStreamData.hasOwnProperty(channel))
+                    {
+                        blurb = masterStreamData[channel].blurb;
+                        recentGames = masterStreamData[channel].games;
+                        let followCount = masterStreamData[channel].followCount;
+                        if(followCount < 50 &&
+                            lastHighlight + HIGHLIGHT_INTERVAL * 60 * 1000 < now)
+                        {
+                            PlaySound("sound/stamp.ogg", 0.5);
+                            lastHighlight = now;
+                        }
+                    }
+
                     if(emoteTags.length > 0)
                     {
                         emotesWrapper.style.display = "flex";
@@ -224,8 +255,7 @@
                         emotesWrapper.style.display = "none";
                     }
 
-                    let gamesWrapper = document.getElementById("gamesWrapper");
-                    let recentGames = masterStreamData[channel].games;
+                    let gamesWrapper = document.getElementById(shoutOutType + "GamesWrapper");
                     if(recentGames.length > 0)
                     {
                         gamesWrapper.style.display = "flex";
@@ -235,11 +265,14 @@
                         gamesWrapper.style.display = "none";
                     }
 
-                    let gamesDiv = document.getElementById("games");
+                    let gamesDiv = document.getElementById(shoutOutType + "Games");
                     let gameImages = [];
                     for(let i = 0; i < recentGames.length; ++i)
                     {
-                        let url = recentGames[i].node.boxArtURL;
+                        let node = recentGames[i].node;
+                        if(node == null)
+                            continue;
+                        let url = node.boxArtURL;
                         url = url.replace("{width}", "48");
                         url = url.replace("{height}", "64");
 
@@ -251,8 +284,20 @@
                         gameImages.push(newImg);
                     }
 
-                    if(debug == true)
-                        return;
+                    let blurbWrapper = document.getElementById(shoutOutType + "BlurbWrapper");
+                    if(blurb != undefined && blurb != null && blurb != "")
+                    {
+                        blurbWrapper.style.display = "block";
+                        let blurbDiv = document.getElementById(shoutOutType + "Blurb");
+                        blurbDiv.innerText = blurb;
+                    }
+                    else
+                    {
+                        blurbWrapper.style.display = "none";
+                    }
+
+                    //if(debug == true)
+                    //    return;
 
                     await Pause(SHOUTOUT_DURATION * 1000);
                    
@@ -280,27 +325,84 @@
 
     <body onload="Init()">
 
-        <div id="shoutout" class="Blocky" style="display:none; left:1px; position:relative; font-size:small; width:135px">
+        <!-- for auto shoutouts -->
+        <div id="autoShoutout" class="Blocky" style="display:none; left:1px; position:relative; font-size:small; width:155px">
             <div class="SlideInRight" style="background-color: rgb(255,255,0); margin:1px; padding:2px"></table>
                 <div style="color:rgb(0,200,255);margin-bottom:5px">Otter recommends</div>
-                <div id="user" style="color:rgb(255,128,128); font-size:18px; text-align: center;">
+                <div id="autoName" style="color:rgb(255,128,128); font-size:18px; text-align: center;">
                     abcdefghijklmnopqrstuvwxy
                 </div>
-                <div id="pfpCircle" class="Circle" style="background-color:green; border:solid green; margin:auto; width:32px; height:32px">
-                    <img id="profilePic" style="height:100%"/>
+                <div id="autoPfpCircle" class="Circle" style="background-color:green; border:solid green; margin:auto; width:32px; height:32px">
+                    <img id="autoPfp" style="height:100%"/>
                 </div>
-                <div id="category" style="color:rgb(0,200,255); font-size:14px; text-align: center; width:inherit"></div>
-                <div id="title" style="color:rgb(255,128,128); font-size:14px; text-align: center; width:inherit"></div>
-                <div id="emoteWrapper" style="width:inherit;">
+                <div id="autoCategory" style="color:rgb(0,200,255); font-size:14px; text-align: center; width:inherit"></div>
+                <div id="autoTitle" style="color:rgb(255,128,128); font-size:14px; text-align: center; width:inherit"></div>
+                <div id="autoEmoteWrapper" style="width:inherit;">
                     <!--<div style="align-self:center; margin:5px;color:rgb(255,128,128)">Emotes: </div> -->
-                    <div id="emotes" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                    <div id="autoEmotes" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
                 </div>
-                <div id="gamesWrapper" style="width:inherit;">
+                <div id="autoGamesWrapper" style="width:inherit;">
                     <!--<div style="align-self:center;color:rgb(0,200,255);">Recent Games</div><br/>-->
-                    <div id="games" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                    <div id="autoGames" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+                <div id="autoBlurbWrapper" style="width:inherit;">
+                    <div style="align-self:center;color:rgb(0,200,255);font-size:small;">Otter says</div>
+                    <div id="autoBlurb" style="color:rgb(255,128,128); font-size:14px; text-align: center; width:inherit"></div>
                 </div>
             </div>
         </div>
+
+        <!-- used for deliberate commands, bigger -->
+        <div id="commandShoutout" class="Blocky" style="display:none; left:1px; position:relative; font-size:medium; width:310px">
+            <div class="SlideInRight" style="background-color: rgb(255,255,0); margin:1px; padding:2px"></table>
+                <div style="color:rgb(0,200,255);margin-bottom:5px">Otter recommends</div>
+                <div id="commandName" style="color:rgb(255,128,128); font-size:36px; text-align: center;">
+                    abcdefghijklmnopqrstuvwxy
+                </div>
+                <div id="commandPfpCircle" class="Circle" style="background-color:green; border:solid green; margin:auto; width:64px; height:64px">
+                    <img id="commandPfp" style="height:100%"/>
+                </div>
+                <div id="commandCategory" style="color:rgb(0,200,255); font-size:28px; text-align: center; width:inherit"></div>
+                <div id="commandTitle" style="color:rgb(255,128,128); font-size:28px; text-align: center; width:inherit"></div>
+                <div id="commandEmoteWrapper" style="width:inherit;">
+                    <!--<div style="align-self:center; margin:5px;color:rgb(255,128,128)">Emotes: </div> -->
+                    <div id="commandEmotes" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+                <div id="commandGamesWrapper" style="width:inherit;">
+                    <!--<div style="align-self:center;color:rgb(0,200,255);">Recent Games</div><br/>-->
+                    <div id="commandGames" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+                <div id="commandBlurbWrapper" style="width:inherit;">
+                    <div style="align-self:center;color:rgb(0,200,255);font-size:medium;">Otter says</div>
+                    <div id="commandBlurb" style="color:rgb(255,128,128); font-size:28px; text-align: center; width:inherit"></div>
+                </div>
+            </div>
+        </div>
+
+
+        <!--<div id="commandShoutout" class="Blocky" style="display:none; left:1px; top:200px; position:relative; font-size:small; width:800px">
+            <div class="SlideInRight" style="background-color:rgb(255,255,0); margin:1px; padding:2px"></table>
+                <div style="color:rgb(0,200,255);margin-bottom:5px">GO FOLLOW</div>
+                <div id="commandName" style="color:rgb(255,128,128); font-size:18px; text-align: center;">
+                    abcdefghijklmnopqrstuvwxy
+                </div>
+                <div id="commandPfpCircle" class="Circle" style="background-color:green; border:solid green; margin:auto; width:32px; height:32px">
+                    <img id="commandPfp" style="height:100%"/>
+                </div>
+                <div id="commandCategory" style="color:rgb(0,200,255); font-size:14px; text-align: center; width:inherit"></div>
+                <div id="commandTitle" style="color:rgb(255,128,128); font-size:14px; text-align: center; width:inherit"></div>
+                <div id="commandEmoteWrapper" style="width:inherit;">
+                    <!--<div style="align-self:center; margin:5px;color:rgb(255,128,128)">Emotes: </div> --
+                    <div id="commandEmotes" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+                <div id="commandGamesWrapper" style="width:inherit;">
+                    <!--<div style="align-self:center;color:rgb(0,200,255);">Recent Games</div><br/>--
+                    <div id="commandGames" style="display:flex; flex-wrap:wrap; justify-content:center; width:inherit"></div>
+                </div>
+            </div>
+        </div>-->
+
+        
 
 
         <!-- short and wide version -->

@@ -90,10 +90,10 @@ function Shoutout(command)
 
     let username = command.arguments[0];
     let sanitizedUsername =  jsonUtility.SanitizeUsername(username);
-    let url = "twitch.tv/" + sanitizedUsername;
+    let url = "https://twitch.tv/" + sanitizedUsername;
 
-    twitchBot.Say("thebarkingotter", "Otter recommends " + username
-        + " , please be sure to follow and show support at " + url);
+    twitchBot.Say("thebarkingotter", "Go check out " + url + '!!');
+    //twitchBot.Say("thebarkingotter", "/shoutout " + username);        // not supported
 
     command.arguments[0] = sanitizedUsername;
     
@@ -105,11 +105,34 @@ function Shoutout(command)
 // Queries the most recent stream date and list of recent games.
 // Input is expected as a string, not an array or object.
 ///////////////////////////////////////////////////////////////////////////////////
-async function UpdateRecentStreamData(channelsString)
+async function UpdateRecentStreamData(channelMap)
 {
     overlay.ReadData();
     let data = overlay.GetData();
-    data.recentStreamData = await SendGqlQuery("recentStreamData", channelsString);
+
+    let queryString = '[';
+    let isFirst = true;
+    for(let channel in channelMap)
+    {
+        //TODO: we can do extra processing or culling here
+        
+        if(!isFirst)
+            queryString += ",";
+
+        queryString += '"' + channel + '"';
+
+        isFirst = false;
+    }
+    queryString += ']';
+
+    let streamData = await SendGqlQuery("recentStreamData", queryString);
+    for(let channel in streamData)
+    {
+        streamData[channel].blurb = channelMap[channel];
+    }
+
+    data.recentStreamData = streamData;
+
     overlay.WriteData();
     return data.recentStreamData;
 }
@@ -120,7 +143,7 @@ module.exports =
     {
         "!showclip" : ShowClip,
         "!showpfp" : ShowProfilePic,
-        "!shoutout" : Shoutout
+        "!so" : Shoutout
     },
     Initialize, UpdateRecentStreamData
 };

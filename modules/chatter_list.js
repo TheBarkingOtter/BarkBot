@@ -39,7 +39,7 @@ let userMap = {};
 let nonlurkers = [];
 
 // An array of all users that have ever spoken in chat. Gets written to a file.
-let guestbook = [];
+let guestbook = {};
 
 ///////////////////////////////////////////////////////////
 // Initializes chatter tracking.
@@ -82,19 +82,8 @@ function Initialize(bot, logDirectory)
 
 				try
 				{
-					let json = JSON.parse(fileContents);
-					let str = '["' + json[0];
-					for(let i = 1; i < json.length; ++i)
-					{
-						//TODO: we can do extra processing or culling here
-						str += '","' + json[i];
-					}
-					str += '"]';
-					json = await twitchApi.UpdateRecentStreamData(str);
-					for(let property in json)
-					{
-						guestbook.push(property);
-					}
+					guestbook = JSON.parse(fileContents);
+					await twitchApi.UpdateRecentStreamData(guestbook);
 				}
 				catch(e)
 				{
@@ -322,10 +311,10 @@ function WriteChannelLog(channel)
 ///////////////////////////////////////////////////////////
 function UpdateGuestbook(path, user)
 {
-	let index = guestbook.indexOf(user);
-	if(index == -1)
+	let isInBook = guestbook.hasOwnProperty(user);
+	if(!isInBook)
 	{
-		guestbook.push(user);
+		guestbook[user] = "";
 		let json = JSON.stringify(guestbook);
 		json = jsonUtility.FixBracePairingProblems(json).string;
 		filesystem.writeFileSync(path, json);

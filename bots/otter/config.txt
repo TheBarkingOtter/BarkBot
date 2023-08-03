@@ -1,4 +1,8 @@
 {
+	"clientId" : "rat7tckwdp2962ahwqlorv2qg4lzcr",
+
+	"token" : "gotm8jhndxa372n1y9dblf55widvd7",
+
 	"consoleCommands":
 	{
 		"yay" : "command thebarkingotter !stampbomb yay",
