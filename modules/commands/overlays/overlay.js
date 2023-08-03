@@ -1,5 +1,3 @@
-const secure = require("./../../secure.js");
-
 const console = require("console");
 const filesystem = require("fs");
 const htmlColors = require("html-colors");

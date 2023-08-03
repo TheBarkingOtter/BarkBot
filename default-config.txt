@@ -1,11 +1,22 @@
 {
 	"clientId" : "GET FROM TWITCH!",
-
 	"token" : "GET FROM TWITCH!",
+
+	"modulePath": "C:/Users/Scott/node_modules/",
+	"overlaysPath": "C:/Users/Scott/Twitch/",
+
+	"identities":
+	{
+		"Example":
+		{
+			"username":"",
+			"password":""
+		}
+	},
 
 	"consoleCommands":
 	{
-		"yay" : "command thebarkingotter !stampbomb yay",
+		"yay" : "command thebarkingotter !stampbomb yay"
 	},
 
 	//Place greetings below in the form "lowercase username": "greeting message", separating entries with commas.

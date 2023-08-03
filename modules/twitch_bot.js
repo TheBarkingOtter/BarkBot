@@ -1,5 +1,3 @@
-const secure = require("./secure.js");
-
 const barkConsole = require("./twitch_bot_console.js");
 const filesystem = require("fs");
 const jsonUtility = require("./json_utility.js");

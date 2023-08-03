@@ -1,5 +1,4 @@
 const { commands } = require("./commands/thebarkingotter.js");
-const secure = require("./secure.js");
 const inquirer = require("inquirer");
 //const twitchBot = require("./twitch_bot.js");
 

@@ -1,13 +1,12 @@
 let modules =
 {
-	secure : require("./../../modules/secure.js"),
 	twitchBot : require('./../../modules/twitch_bot.js')
 };
 
 //HACK: couldn't figure out how to dynamically determine the path of this js file
-const BOT_PATH = 'C:/Users/Scott/Documents/GitHub/BarkBot/bots/otter';
+//const BOT_PATH = 'C:/Users/Scott/Documents/GitHub/BarkBot/bots/otter';
 
-var configMap = modules.twitchBot.ParseConfig(BOT_PATH + '/' + 'config.txt');
+var configMap = modules.twitchBot.ParseConfig('./config.txt');
 let configModules = configMap.modules;
 
 
@@ -59,6 +58,8 @@ const shoost = require("./../../modules/commands/overlays/shoost.js")
 
 const botConsole = require('./../../modules/twitch_bot_console.js');
 
+let overlaysPath = configMap.overlaysPath;
+
 
 main();
 
@@ -89,18 +90,18 @@ function main()
 		botConsole.SetCustomCommands(configMap.consoleCommands);
 		
 		var client = modules.twitchBot.CreateClient(
-			modules.secure.SelfIdentity,
+			configMap.identities.SelfIdentity,
 			['thebarkingotter']
 		);
 		
 		twitchApi.Initialize(configMap.clientId, configMap.token);
-		overlay.Initialize("E:/Twitch/overlay.json");
-		chatterList.Initialize(modules.twitchBot, "E:/Twitch/Userlists");
-		logFile.Initialize(modules.twitchBot, "E:/Twitch/Logs");
+		overlay.Initialize(overlaysPath + "overlay.json");
+		chatterList.Initialize(modules.twitchBot, overlaysPath + "Userlists");
+		logFile.Initialize(modules.twitchBot, overlaysPath + "Logs");
 		goals.Initialize(modules.twitchBot);
-		points.Initialize(modules.twitchBot, "E:/Twitch");
+		points.Initialize(modules.twitchBot, overlaysPath);
 		//emoteWall.Initialize(modules.twitchBot);
-		commandTracking.Initialize(modules.twitchBot, "E:/Twitch/commandRecord_");
+		commandTracking.Initialize(modules.twitchBot, overlaysPath + "commandRecord_");
 		//viewers.InitializeViewerLogging(twitchBot);
 		
 		

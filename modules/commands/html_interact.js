@@ -1,5 +1,4 @@
 const { Console } = require("console");
-const secure = require("../../modules/secure.js");
 
 const axios = require("axios");
 const twitchBot = require("../../modules/twitch_bot.js");
